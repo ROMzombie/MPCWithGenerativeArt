@@ -2,8 +2,8 @@
 
 import os
 from pathlib import Path
-from typing import Tuple, Optional, Dict, Any, Union
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from typing import Tuple, Optional, Dict, Any, Union, List
+from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageChops
 
 OUTPUT_DIR = Path("output/cards")
 THUMB_DIR = Path("output/thumbnails")
@@ -87,11 +87,16 @@ def detect_card_boxes(
     card_img: Image.Image,
     art_crop_img: Optional[Image.Image] = None,
     type_line: Optional[str] = None,
+    flavor_name: Optional[str] = None,
+    border_color: Optional[str] = "black",
+    frame_effects: Optional[List[str]] = None,
+    layout: Optional[str] = "normal",
+    full_art: Optional[bool] = False,
 ) -> Dict[str, Any]:
     """
-    Detects the exact borders of the card rules and statistic text boxes,
-    along with art box, title header, type line, and polygonal badges (e.g. loyalty shields).
-    Returns a dict containing detected bounding boxes and polygonal shapes.
+    Detects individual borders of the card rules and statistic text boxes,
+    along with art box, title header (and subtitle banner if present), and type line.
+    Adapts dynamically to standard, planeswalker, borderless, showcase, and inverted card layouts.
     """
     cw, ch = card_img.size
     sx = cw / 745.0
@@ -100,18 +105,47 @@ def detect_card_boxes(
     # 1. Art Box Detection
     art_box = detect_art_box(card_img, art_crop_img)
 
-    # 2. Title Box and Type Line Box (precise pill bounds)
-    title_box = (int(44 * sx), int(38 * sy), int(701 * sx), int(88 * sy))
-    type_box = (int(44 * sx), int(584 * sy), int(701 * sx), int(638 * sy))
-
-    # 3. Rules Text Box and Statistic Elements
     t_lower = (type_line or "").lower()
+    is_planeswalker = "walker" in t_lower
+    is_creature = any(k in t_lower for k in ["creature", "vehicle"])
+    is_battle = any(k in t_lower for k in ["battle", "siege"])
+    
+    effects = [str(e).lower() for e in (frame_effects or [])]
+    is_borderless = (
+        (border_color == "borderless")
+        or ("inverted" in effects)
+        or ("showcase" in effects)
+        or ("extendedart" in effects)
+        or bool(full_art)
+        or (layout == "art_series")
+    )
+    has_flavor_name = bool(flavor_name)
+
+    # 2. Title Box Detection (preserving full title + subtitle banner if present)
+    if is_borderless:
+        if has_flavor_name:
+            title_box = (int(36 * sx), int(36 * sy), int(708 * sx), int(144 * sy))
+        else:
+            title_box = (int(36 * sx), int(36 * sy), int(708 * sx), int(114 * sy))
+    else:
+        if has_flavor_name:
+            title_box = (int(42 * sx), int(36 * sy), int(703 * sx), int(136 * sy))
+        else:
+            title_box = (int(42 * sx), int(36 * sy), int(703 * sx), int(90 * sy))
+
+    # 3. Type Line Box Detection
+    if is_borderless:
+        type_box = (int(38 * sx), int(574 * sy), int(706 * sx), int(626 * sy))
+    else:
+        type_box = (int(42 * sx), int(582 * sy), int(703 * sx), int(640 * sy))
+
+    # 4. Statistic Box & Rules Text Box Detection
     stat_box = None
     stat_polygon = None
 
-    if "walker" in t_lower:
+    if is_planeswalker:
         # Planeswalker / Universewalker layout
-        rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(948 * sy))
+        rules_box = (int(42 * sx), int(644 * sy), int(703 * sx), int(948 * sy))
         # Irregular polygonal loyalty shield badge (notched top, vertical sides, chevron pointed tip)
         stat_polygon = [
             (int(604 * sx), int(928 * sy)),
@@ -124,17 +158,24 @@ def detect_card_boxes(
             (int(599 * sx), int(946 * sy)),
         ]
         stat_box = (int(599 * sx), int(928 * sy), int(709 * sx), int(990 * sy))
-    elif any(k in t_lower for k in ["creature", "vehicle"]):
+    elif is_creature:
         # Creature / Vehicle layout with Power & Toughness box
-        rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(930 * sy))
-        stat_box = (int(560 * sx), int(884 * sy), int(700 * sx), int(960 * sy))
-    elif any(k in t_lower for k in ["battle", "siege"]):
+        if is_borderless:
+            rules_box = (int(44 * sx), int(618 * sy), int(700 * sx), int(932 * sy))
+            stat_box = (int(570 * sx), int(915 * sy), int(706 * sx), int(968 * sy))
+        else:
+            rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(930 * sy))
+            stat_box = (int(560 * sx), int(884 * sy), int(700 * sx), int(960 * sy))
+    elif is_battle:
         # Battle layout with Defense box
         rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(930 * sy))
         stat_box = (int(565 * sx), int(884 * sy), int(700 * sx), int(960 * sy))
     else:
         # Standard non-creature layout (Enchantment, Instant, Sorcery, Artifact, Land)
-        rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
+        if is_borderless:
+            rules_box = (int(44 * sx), int(618 * sy), int(700 * sx), int(942 * sy))
+        else:
+            rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
 
     return {
         "art_box": art_box,
@@ -143,6 +184,7 @@ def detect_card_boxes(
         "stat_polygon": stat_polygon,
         "title_box": title_box,
         "type_box": type_box,
+        "is_borderless": is_borderless,
     }
 
 
@@ -154,8 +196,7 @@ def create_card_exclusion_mask(
     """
     Constructs an alpha mask that excludes (preserves) the card rules text box,
     statistic text box/polygons (such as Planeswalker loyalty shields), title bar, and type line
-    with smooth beveled corners, while opening the art frame and card backgrounds to reveal
-    the full-art generative background.
+    with smooth beveled corners.
     """
     cw, ch = card_img.size
     sx = cw / 745.0
@@ -163,7 +204,7 @@ def create_card_exclusion_mask(
     mask = Image.new("L", (cw, ch), 0)
     draw = ImageDraw.Draw(mask)
 
-    # 1. Preserve Title Header (Card name & mana cost)
+    # 1. Preserve Title Header (Card name, mana cost, and subtitle)
     tb = card_boxes.get("title_box") or (int(44 * sx), int(38 * sy), int(701 * sx), int(88 * sy))
     draw.rounded_rectangle([tb[0], tb[1], tb[2], tb[3]], radius=max(4, int(14 * sx)), fill=255)
 
@@ -200,12 +241,14 @@ def composite_full_art_card(
     target_height: int = MPC_800DPI_HEIGHT,
 ) -> Image.Image:
     """
-    Composites a full-art background image with masked card rules and statistic text boxes,
+    Composites a full-art background image with individually masked card rules and statistic text boxes,
     upscales to 800 DPI print dimensions, and embeds print resolution.
-    The generative art is fitted preserving aspect ratio, centered on the main art frame.
+    For borderless/translucent text boxes, renders clean dark backdrops and isolates text/icons.
     """
     card_rgba = card_frame_img.convert("RGBA")
     cw, ch = card_rgba.size
+    sx = cw / 745.0
+    sy = ch / 1040.0
 
     # Fit full-art generated image preserving aspect ratio centered on the art frame
     art_full = ImageOps.fit(
@@ -215,12 +258,74 @@ def composite_full_art_card(
         centering=(0.5, 0.33),
     )
 
-    # Generate exclusion mask for preserved card elements
-    mask = create_card_exclusion_mask(card_rgba, card_boxes, feather_radius=0.5)
-
-    # Start with full art background and overlay preserved card elements
     composite = art_full.copy()
-    composite.paste(card_rgba, (0, 0), mask)
+    is_borderless = card_boxes.get("is_borderless", False)
+
+    # 1. Composite Title Header
+    tb = card_boxes.get("title_box") or (int(42 * sx), int(36 * sy), int(703 * sx), int(90 * sy))
+    t_mask = Image.new("L", (cw, ch), 0)
+    td = ImageDraw.Draw(t_mask)
+    td.rounded_rectangle(tb, radius=max(4, int(14 * sx)), fill=255)
+    t_mask = t_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+    composite.paste(card_rgba, (0, 0), t_mask)
+
+    # 2. Composite Type Line Box
+    typ = card_boxes.get("type_box") or (int(42 * sx), int(582 * sy), int(703 * sx), int(640 * sy))
+    typ_mask = Image.new("L", (cw, ch), 0)
+    typd = ImageDraw.Draw(typ_mask)
+    typd.rounded_rectangle(typ, radius=max(4, int(14 * sx)), fill=255)
+    typ_mask = typ_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+    composite.paste(card_rgba, (0, 0), typ_mask)
+
+    # 3. Composite Rules Text Box
+    rb = card_boxes.get("rules_box") or (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
+    if is_borderless:
+        # For borderless/translucent cards:
+        # Draw clean dark tinted backing to eliminate old art from the text box
+        draw_comp = ImageDraw.Draw(composite)
+        draw_comp.rounded_rectangle(rb, radius=max(6, int(14 * sx)), fill=(16, 18, 22, 230))
+
+        # Crop rules box region from card
+        rules_crop = card_rgba.crop(rb)
+        gray = rules_crop.convert("L")
+        # Extract text / symbols / border (bright pixels & high contrast)
+        text_mask = gray.point(lambda p: 255 if p > 130 else int(max(0, (p - 70) * 4.25)))
+
+        # Preserve border frame of rules box
+        border_mask = Image.new("L", rules_crop.size, 0)
+        bd = ImageDraw.Draw(border_mask)
+        bd.rounded_rectangle(
+            [0, 0, rules_crop.width - 1, rules_crop.height - 1],
+            radius=max(6, int(14 * sx)),
+            outline=255,
+            width=3,
+        )
+
+        rules_mask = ImageChops.lighter(text_mask, border_mask)
+        composite.paste(rules_crop, (rb[0], rb[1]), rules_mask)
+    else:
+        # Standard opaque rules box
+        rb_mask = Image.new("L", (cw, ch), 0)
+        rbd = ImageDraw.Draw(rb_mask)
+        rbd.rounded_rectangle(rb, radius=max(6, int(14 * sx)), fill=255)
+        rb_mask = rb_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+        composite.paste(card_rgba, (0, 0), rb_mask)
+
+    # 4. Composite Statistic Box (Power/Toughness, Loyalty Shield, or Defense Badge)
+    stat_poly = card_boxes.get("stat_polygon")
+    if stat_poly:
+        sp_mask = Image.new("L", (cw, ch), 0)
+        spd = ImageDraw.Draw(sp_mask)
+        spd.polygon(stat_poly, fill=255)
+        sp_mask = sp_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+        composite.paste(card_rgba, (0, 0), sp_mask)
+    elif card_boxes.get("stat_box"):
+        sb = card_boxes["stat_box"]
+        sb_mask = Image.new("L", (cw, ch), 0)
+        sbd = ImageDraw.Draw(sb_mask)
+        sbd.rounded_rectangle(sb, radius=max(4, int(12 * sx)), fill=255)
+        sb_mask = sb_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+        composite.paste(card_rgba, (0, 0), sb_mask)
 
     # Upscale composite card to 800 DPI target MPC dimensions
     scale_factor = min(target_width / cw, target_height / ch)

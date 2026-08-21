@@ -115,7 +115,19 @@ class TestJanusProGenerator(unittest.IsolatedAsyncioTestCase):
 class TestJanusSettingsAPI(unittest.TestCase):
 
     def setUp(self):
+        self.temp_env = tempfile.NamedTemporaryFile(suffix=".env", delete=False)
+        self.temp_env.close()
+        self.env_patch = patch.dict(os.environ, {"ENV_FILE": self.temp_env.name})
+        self.env_patch.start()
         self.client = TestClient(app)
+
+    def tearDown(self):
+        self.env_patch.stop()
+        if os.path.exists(self.temp_env.name):
+            try:
+                os.remove(self.temp_env.name)
+            except OSError:
+                pass
 
     def test_settings_get_and_post_janus(self):
         # 1. Update settings with Janus provider and HF token

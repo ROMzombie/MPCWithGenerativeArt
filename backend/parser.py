@@ -32,6 +32,7 @@ class ParseResult(BaseModel):
     cards: List[CardItem] = []
     errors: List[str] = []
     total_copies: int = 0
+    global_prompt: Optional[str] = None
 
 
 # Regex pattern to match: Copies CardName (set) CollectorNumber\tprompt
@@ -51,9 +52,12 @@ def parse_deck_text(text: str) -> ParseResult:
     Parses deck lines formatted as:
     Copies CardName (set) CollectorNumber\tprompt
 
+    If the first line (or first non-empty line) starts with '#', the following
+    text is treated as a global prompt that is appended to each card prompt in the file.
+
     Returns a ParseResult with structured CardItems or validation errors.
     """
-    lines = text.strip().splitlines()
+    lines = text.splitlines()
     cards: List[CardItem] = []
     errors: List[str] = []
     total_copies = 0
@@ -61,10 +65,22 @@ def parse_deck_text(text: str) -> ParseResult:
     if not text.strip():
         return ParseResult(valid=False, cards=[], errors=["Deck input is empty. Please provide at least one card line."], total_copies=0)
 
+    # Detect global prompt from the first non-empty line if preceded by '#'
+    global_prompt: Optional[str] = None
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            extracted = stripped.lstrip("#").strip()
+            if extracted:
+                global_prompt = extracted
+        break
+
     for idx, raw_line in enumerate(lines, start=1):
         line = raw_line.strip()
         if not line or line.startswith("#") or line.startswith("//"):
-            # Skip empty lines and comment lines
+            # Skip empty lines and comment lines (including the global prompt line)
             continue
 
         # Try standard pattern first
@@ -74,15 +90,22 @@ def parse_deck_text(text: str) -> ParseResult:
             card_name = match.group("name").strip()
             set_code = match.group("set").strip().upper()
             collector_number = match.group("number").strip()
-            prompt = match.group("prompt").strip()
+            raw_prompt = match.group("prompt").strip()
 
             if copies <= 0:
                 errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
                 continue
 
-            if not prompt:
+            if not raw_prompt and not global_prompt:
                 errors.append(f"Line {idx}: Missing prompt for card '{card_name}'")
                 continue
+
+            if raw_prompt and global_prompt:
+                prompt = f"{raw_prompt} {global_prompt}"
+            elif raw_prompt:
+                prompt = raw_prompt
+            else:
+                prompt = global_prompt
 
             card_id = f"card_{idx}_{set_code}_{collector_number}".lower()
             cards.append(
@@ -115,8 +138,43 @@ def parse_deck_text(text: str) -> ParseResult:
                 if copies <= 0:
                     errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
                     continue
-                if not prompt_part:
+                if not prompt_part and not global_prompt:
                     errors.append(f"Line {idx}: Missing prompt for card '{card_name}'")
+                    continue
+
+                if prompt_part and global_prompt:
+                    prompt = f"{prompt_part} {global_prompt}"
+                elif prompt_part:
+                    prompt = prompt_part
+                else:
+                    prompt = global_prompt
+
+                card_id = f"card_{idx}_{set_code}_{collector_number}".lower()
+                cards.append(
+                    CardItem(
+                        id=card_id,
+                        line_number=idx,
+                        copies=copies,
+                        card_name=card_name,
+                        set_code=set_code,
+                        collector_number=collector_number,
+                        prompt=prompt,
+                    )
+                )
+                total_copies += copies
+                continue
+
+        # If line has no tab/prompt but global_prompt exists, check if card part matches
+        if global_prompt:
+            tab_match = TAB_SPLIT_PATTERN.match(line)
+            if tab_match:
+                copies = int(tab_match.group("copies"))
+                card_name = tab_match.group("name").strip()
+                set_code = tab_match.group("set").strip().upper()
+                collector_number = tab_match.group("number").strip()
+
+                if copies <= 0:
+                    errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
                     continue
 
                 card_id = f"card_{idx}_{set_code}_{collector_number}".lower()
@@ -128,7 +186,7 @@ def parse_deck_text(text: str) -> ParseResult:
                         card_name=card_name,
                         set_code=set_code,
                         collector_number=collector_number,
-                        prompt=prompt_part,
+                        prompt=global_prompt,
                     )
                 )
                 total_copies += copies
@@ -140,9 +198,9 @@ def parse_deck_text(text: str) -> ParseResult:
         )
 
     if errors:
-        return ParseResult(valid=False, cards=cards, errors=errors, total_copies=total_copies)
+        return ParseResult(valid=False, cards=cards, errors=errors, total_copies=total_copies, global_prompt=global_prompt)
 
     if not cards:
-        return ParseResult(valid=False, cards=[], errors=["No valid card entries found in input."], total_copies=0)
+        return ParseResult(valid=False, cards=[], errors=["No valid card entries found in input."], total_copies=0, global_prompt=global_prompt)
 
-    return ParseResult(valid=True, cards=cards, errors=[], total_copies=total_copies)
+    return ParseResult(valid=True, cards=cards, errors=[], total_copies=total_copies, global_prompt=global_prompt)

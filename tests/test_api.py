@@ -1,5 +1,5 @@
-"""API Integration tests for MPCWithGenerativeArt."""
-
+import os
+import tempfile
 import unittest
 from fastapi.testclient import TestClient
 from backend.app import app
@@ -34,6 +34,45 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertFalse(data["valid"])
         self.assertTrue(len(data["errors"]) > 0)
 
+    def test_parse_with_global_prompt(self):
+        payload = {
+            "text": "# in cyberpunk futuristic style\n1 Byode, Inverse Sun (PH21) 3\tPixie\n1 All-Seeing Toby (SLD) 2695\tBoy"
+        }
+        resp = client.post("/api/parse", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["valid"])
+        self.assertEqual(data["global_prompt"], "in cyberpunk futuristic style")
+        self.assertEqual(data["cards"][0]["prompt"], "Pixie in cyberpunk futuristic style")
+        self.assertEqual(data["cards"][1]["prompt"], "Boy in cyberpunk futuristic style")
+
+    def test_parse_file_with_global_prompt(self):
+        file_content = b"# retro synthwave style\n1 Byode, Inverse Sun (PH21) 3\tPixie\n"
+        resp = client.post(
+            "/api/parse-file",
+            files={"file": ("deck.txt", file_content, "text/plain")}
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["valid"])
+        self.assertEqual(data["global_prompt"], "retro synthwave style")
+        self.assertEqual(data["cards"][0]["prompt"], "Pixie retro synthwave style")
+
+    def setUp(self):
+        import tempfile
+        self.temp_env = tempfile.NamedTemporaryFile(suffix=".env", delete=False)
+        self.temp_env.close()
+        self.env_patch = unittest.mock.patch.dict(os.environ, {"ENV_FILE": self.temp_env.name})
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+        if os.path.exists(self.temp_env.name):
+            try:
+                os.remove(self.temp_env.name)
+            except OSError:
+                pass
+
     def test_settings_endpoints(self):
         get_resp = client.get("/api/settings")
         self.assertEqual(get_resp.status_code, 200)
@@ -46,16 +85,18 @@ class TestFastAPIEndpoints(unittest.TestCase):
         import os
         from pathlib import Path
         from dotenv import dotenv_values
-        from backend.app import AppState, ENV_FILE
+        from backend.app import AppState, get_env_file
 
-        # Test updating settings saves to .env
+        # Test updating settings saves to temporary .env
         post_resp = client.post("/api/settings", json={"provider": "grok", "xai_api_key": "test_xai_secret_123"})
         self.assertEqual(post_resp.status_code, 200)
         self.assertEqual(post_resp.json()["provider"], "grok")
 
-        # Verify .env file on disk contains the updated values
-        self.assertTrue(ENV_FILE.exists())
-        env_vals = dotenv_values(str(ENV_FILE))
+        # Verify temporary .env file on disk contains the updated values
+        target_env = get_env_file()
+        self.assertIsNotNone(target_env)
+        self.assertTrue(target_env.exists())
+        env_vals = dotenv_values(str(target_env))
         self.assertEqual(env_vals.get("GENERATOR_PROVIDER"), "grok")
         self.assertEqual(env_vals.get("XAI_API_KEY"), "test_xai_secret_123")
 

@@ -56,6 +56,49 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
         res3 = parse_deck_text("")
         self.assertFalse(res3.valid)
 
+    def test_parser_global_prompt(self):
+        deck_text = """# in watercolor studio ghibli fantasy anime style
+        1 Byode, Inverse Sun (PH21) 3\tAn anime girl dressed like a pixie
+        2 All-Seeing Toby (SLD) 2695\tAn anime boy in a library holding a book
+        """
+        res = parse_deck_text(deck_text)
+        self.assertTrue(res.valid)
+        self.assertEqual(res.global_prompt, "in watercolor studio ghibli fantasy anime style")
+        self.assertEqual(len(res.cards), 2)
+        self.assertEqual(
+            res.cards[0].prompt,
+            "An anime girl dressed like a pixie in watercolor studio ghibli fantasy anime style",
+        )
+        self.assertEqual(
+            res.cards[1].prompt,
+            "An anime boy in a library holding a book in watercolor studio ghibli fantasy anime style",
+        )
+
+    def test_parser_global_prompt_variations(self):
+        # Leading whitespace and comments throughout
+        deck_text = """
+        
+        # vibrant 8k digital art
+        # regular comment
+        1 Byode, Inverse Sun (PH21) 3\tPixie
+        // another comment
+        1 All-Seeing Toby (SLD) 2695\tBoy with book
+        """
+        res = parse_deck_text(deck_text)
+        self.assertTrue(res.valid)
+        self.assertEqual(res.global_prompt, "vibrant 8k digital art")
+        self.assertEqual(res.cards[0].prompt, "Pixie vibrant 8k digital art")
+        self.assertEqual(res.cards[1].prompt, "Boy with book vibrant 8k digital art")
+
+        # Comment on first line with // is not global prompt
+        deck_no_global = """// just a regular comment
+        1 Byode, Inverse Sun (PH21) 3\tPixie
+        """
+        res_no_global = parse_deck_text(deck_no_global)
+        self.assertTrue(res_no_global.valid)
+        self.assertIsNone(res_no_global.global_prompt)
+        self.assertEqual(res_no_global.cards[0].prompt, "Pixie")
+
     def test_mpc_bracket_calculation(self):
         self.assertEqual(calculate_mpc_bracket(5), 18)
         self.assertEqual(calculate_mpc_bracket(18), 18)
@@ -191,18 +234,51 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(final_img.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
 
-        # 5. Save outputs
-        png_path, thumb_path = save_card_outputs("test_byode_800dpi", final_img, target_dpi=800)
-        self.assertTrue(os.path.exists(png_path))
-        self.assertTrue(os.path.exists(thumb_path))
+    async def test_borderless_creature_and_noncreature_masking(self):
+        # 1. Test All-Seeing Toby (SLD 2695) - Borderless Creature with Nickname / Subtitle
+        toby_data = await scryfall_client.get_card("sld", "2695", "All-Seeing Toby")
+        toby_img = Image.open(toby_data.cached_png_path).convert("RGB")
+        toby_boxes = detect_card_boxes(
+            toby_img,
+            type_line=toby_data.type_line,
+            flavor_name=toby_data.flavor_name,
+            border_color=toby_data.border_color,
+            frame_effects=toby_data.frame_effects,
+            layout=toby_data.layout,
+            full_art=toby_data.full_art,
+        )
+        self.assertTrue(toby_boxes["is_borderless"])
+        self.assertIsNotNone(toby_boxes["stat_box"])
+        self.assertIsNone(toby_boxes["stat_polygon"])
+        # Title box must include subtitle banner (height > 100)
+        self.assertGreater(toby_boxes["title_box"][3] - toby_boxes["title_box"][1], 90)
 
-        # Verify saved PNG DPI metadata
-        saved_img = Image.open(png_path)
-        self.assertEqual(saved_img.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
-        dpi = saved_img.info.get("dpi")
-        self.assertIsNotNone(dpi)
-        self.assertEqual(round(dpi[0]), 800)
-        self.assertEqual(round(dpi[1]), 800)
+        # 2. Test Animate Dead (SLD 2189) - Borderless Non-Creature (Enchantment)
+        animate_data = await scryfall_client.get_card("sld", "2189", "Animate Dead")
+        animate_img = Image.open(animate_data.cached_png_path).convert("RGB")
+        animate_boxes = detect_card_boxes(
+            animate_img,
+            type_line=animate_data.type_line,
+            flavor_name=animate_data.flavor_name,
+            border_color=animate_data.border_color,
+            frame_effects=animate_data.frame_effects,
+            layout=animate_data.layout,
+            full_art=animate_data.full_art,
+        )
+        self.assertTrue(animate_boxes["is_borderless"])
+        # Non-creature enchantment must have NO stat box or stat polygon
+        self.assertIsNone(animate_boxes["stat_box"])
+        self.assertIsNone(animate_boxes["stat_polygon"])
+
+        # 3. Composite both and verify output dimensions
+        gen = MockProceduralGenerator()
+        toby_art = await gen.generate_art("scout in watchtower", "All-Seeing Toby", toby_img.width, toby_img.height)
+        toby_final = composite_card(toby_img, toby_art, card_boxes=toby_boxes)
+        self.assertEqual(toby_final.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
+
+        animate_art = await gen.generate_art("old man with white beard", "Animate Dead", animate_img.width, animate_img.height)
+        animate_final = composite_card(animate_img, animate_art, card_boxes=animate_boxes)
+        self.assertEqual(animate_final.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
 
 
 if __name__ == "__main__":

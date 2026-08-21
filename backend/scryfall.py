@@ -33,6 +33,10 @@ class ScryfallCardData:
         mana_cost: Optional[str] = None,
         type_line: Optional[str] = None,
         layout: Optional[str] = "normal",
+        border_color: Optional[str] = "black",
+        frame_effects: Optional[list] = None,
+        full_art: Optional[bool] = False,
+        promo_types: Optional[list] = None,
         cached_png_path: Optional[str] = None,
         cached_art_path: Optional[str] = None,
     ):
@@ -47,6 +51,10 @@ class ScryfallCardData:
         self.mana_cost = mana_cost or ""
         self.type_line = type_line or ""
         self.layout = layout
+        self.border_color = border_color or "black"
+        self.frame_effects = frame_effects or []
+        self.full_art = bool(full_art)
+        self.promo_types = promo_types or []
         self.cached_png_path = cached_png_path
         self.cached_art_path = cached_art_path
 
@@ -152,6 +160,10 @@ class ScryfallClient:
                 mana_cost=card_json.get("mana_cost", ""),
                 type_line=card_json.get("type_line", ""),
                 layout=card_json.get("layout", "normal"),
+                border_color=card_json.get("border_color", "black"),
+                frame_effects=card_json.get("frame_effects", []),
+                full_art=card_json.get("full_art", False),
+                promo_types=card_json.get("promo_types", []),
                 cached_png_path=str(png_cache_path),
                 cached_art_path=str(art_cache_path) if art_cache_path.exists() else None,
             )

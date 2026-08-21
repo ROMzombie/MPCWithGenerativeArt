@@ -19,8 +19,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from dotenv import load_dotenv, set_key
-ENV_FILE = Path(".env")
-load_dotenv(dotenv_path=ENV_FILE)
+
+_TEST_FALLBACK_ENV: Optional[Path] = None
+
+def get_env_file() -> Optional[Path]:
+    """Get the target .env file path, supporting ENV_FILE env var override or disabling."""
+    global _TEST_FALLBACK_ENV
+    env_path = os.environ.get("ENV_FILE")
+    if env_path is not None:
+        if not env_path or env_path.lower() in ("none", "false", "off", "disable", "disabled"):
+            return None
+        return Path(env_path)
+
+    # If running under unittest or pytest or TESTING flag, never touch local production .env
+    if "unittest" in sys.modules or "pytest" in sys.modules or os.environ.get("TESTING") == "true":
+        if _TEST_FALLBACK_ENV is None:
+            import tempfile
+            temp_f = tempfile.NamedTemporaryFile(suffix=".env", delete=False)
+            _TEST_FALLBACK_ENV = Path(temp_f.name)
+            temp_f.close()
+        return _TEST_FALLBACK_ENV
+
+    return Path(".env")
+
+ENV_FILE = get_env_file()
+if ENV_FILE and ENV_FILE.exists():
+    load_dotenv(dotenv_path=ENV_FILE)
 
 from backend.parser import parse_deck_text, CardItem, ParseResult
 from backend.scryfall import scryfall_client
@@ -167,7 +191,16 @@ async def process_single_card(card: CardItem):
         art_crop_img = Image.open(card_data.cached_art_path).convert("RGB") if card_data.cached_art_path else None
 
         # 2. Detect exact card boxes (art box, rules text box, statistic box, headers)
-        card_boxes = detect_card_boxes(card_frame_img, art_crop_img, type_line=card_data.type_line)
+        card_boxes = detect_card_boxes(
+            card_img=card_frame_img,
+            art_crop_img=art_crop_img,
+            type_line=card_data.type_line,
+            flavor_name=card_data.flavor_name,
+            border_color=card_data.border_color,
+            frame_effects=card_data.frame_effects,
+            layout=card_data.layout,
+            full_art=card_data.full_art,
+        )
         card.art_box = card_boxes.get("art_box")
         card.rules_box = card_boxes.get("rules_box")
         card.stat_box = card_boxes.get("stat_box")
@@ -374,54 +407,76 @@ async def get_settings():
 
 @app.post("/api/settings")
 async def update_settings(settings: SettingsModel):
-    """Update generative art settings and API keys and persist them in .env."""
+    """Update generative art settings and API keys and persist them in .env (if enabled)."""
     state.provider = settings.provider
     os.environ["GENERATOR_PROVIDER"] = settings.provider
 
-    # Ensure .env file exists
-    if not ENV_FILE.exists():
-        ENV_FILE.touch()
-
-    try:
-        set_key(str(ENV_FILE), "GENERATOR_PROVIDER", settings.provider)
-    except Exception as e:
-        print(f"[Settings] Warning: Failed to persist GENERATOR_PROVIDER to .env: {e}")
-
-    if settings.hf_token is not None:
-        state.hf_token = settings.hf_token.strip()
-        os.environ["HF_TOKEN"] = state.hf_token
-        if state.hf_token:
+    target_env = get_env_file()
+    if target_env is not None:
+        # Ensure target .env file exists
+        if not target_env.exists():
             try:
-                set_key(str(ENV_FILE), "HF_TOKEN", state.hf_token)
+                target_env.parent.mkdir(parents=True, exist_ok=True)
+                target_env.touch()
             except Exception:
                 pass
 
-    if settings.gemini_api_key is not None:
-        state.gemini_api_key = settings.gemini_api_key.strip()
-        os.environ["GEMINI_API_KEY"] = state.gemini_api_key
-        if state.gemini_api_key:
-            try:
-                set_key(str(ENV_FILE), "GEMINI_API_KEY", state.gemini_api_key)
-            except Exception:
-                pass
+        try:
+            set_key(str(target_env), "GENERATOR_PROVIDER", settings.provider)
+        except Exception as e:
+            print(f"[Settings] Warning: Failed to persist GENERATOR_PROVIDER to {target_env}: {e}")
 
-    if settings.openai_api_key is not None:
-        state.openai_api_key = settings.openai_api_key.strip()
-        os.environ["OPENAI_API_KEY"] = state.openai_api_key
-        if state.openai_api_key:
-            try:
-                set_key(str(ENV_FILE), "OPENAI_API_KEY", state.openai_api_key)
-            except Exception:
-                pass
+        if settings.hf_token is not None:
+            state.hf_token = settings.hf_token.strip()
+            os.environ["HF_TOKEN"] = state.hf_token
+            if state.hf_token:
+                try:
+                    set_key(str(target_env), "HF_TOKEN", state.hf_token)
+                except Exception:
+                    pass
 
-    if settings.xai_api_key is not None:
-        state.xai_api_key = settings.xai_api_key.strip()
-        os.environ["XAI_API_KEY"] = state.xai_api_key
-        if state.xai_api_key:
-            try:
-                set_key(str(ENV_FILE), "XAI_API_KEY", state.xai_api_key)
-            except Exception:
-                pass
+        if settings.gemini_api_key is not None:
+            state.gemini_api_key = settings.gemini_api_key.strip()
+            os.environ["GEMINI_API_KEY"] = state.gemini_api_key
+            if state.gemini_api_key:
+                try:
+                    set_key(str(target_env), "GEMINI_API_KEY", state.gemini_api_key)
+                except Exception:
+                    pass
+
+        if settings.openai_api_key is not None:
+            state.openai_api_key = settings.openai_api_key.strip()
+            os.environ["OPENAI_API_KEY"] = state.openai_api_key
+            if state.openai_api_key:
+                try:
+                    set_key(str(target_env), "OPENAI_API_KEY", state.openai_api_key)
+                except Exception:
+                    pass
+
+        if settings.xai_api_key is not None:
+            state.xai_api_key = settings.xai_api_key.strip()
+            os.environ["XAI_API_KEY"] = state.xai_api_key
+            if state.xai_api_key:
+                try:
+                    set_key(str(target_env), "XAI_API_KEY", state.xai_api_key)
+                except Exception:
+                    pass
+    else:
+        if settings.hf_token is not None:
+            state.hf_token = settings.hf_token.strip()
+            os.environ["HF_TOKEN"] = state.hf_token
+
+        if settings.gemini_api_key is not None:
+            state.gemini_api_key = settings.gemini_api_key.strip()
+            os.environ["GEMINI_API_KEY"] = state.gemini_api_key
+
+        if settings.openai_api_key is not None:
+            state.openai_api_key = settings.openai_api_key.strip()
+            os.environ["OPENAI_API_KEY"] = state.openai_api_key
+
+        if settings.xai_api_key is not None:
+            state.xai_api_key = settings.xai_api_key.strip()
+            os.environ["XAI_API_KEY"] = state.xai_api_key
 
     return {
         "status": "updated",

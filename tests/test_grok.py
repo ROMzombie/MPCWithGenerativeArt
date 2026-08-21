@@ -37,17 +37,17 @@ class TestGrokGenerator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(gen1.api_key, "direct_key")
 
         # Environment variable XAI_API_KEY
-        with patch.dict(os.environ, {"XAI_API_KEY": "env_xai_key"}, clear=True):
+        with patch.dict(os.environ, {"XAI_API_KEY": "env_xai_key", "GROK_API_KEY": ""}, clear=False):
             gen2 = GrokImageGenerator()
             self.assertEqual(gen2.api_key, "env_xai_key")
 
         # Environment variable GROK_API_KEY
-        with patch.dict(os.environ, {"GROK_API_KEY": "env_grok_key"}, clear=True):
+        with patch.dict(os.environ, {"GROK_API_KEY": "env_grok_key", "XAI_API_KEY": ""}, clear=False):
             gen3 = GrokImageGenerator()
             self.assertEqual(gen3.api_key, "env_grok_key")
 
     async def test_fallback_when_no_api_key(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"XAI_API_KEY": "", "GROK_API_KEY": ""}, clear=False):
             gen = GrokImageGenerator(api_key="")
             art = await gen.generate_art(
                 prompt="A cybernetic samurai in neo-tokyo",
@@ -172,7 +172,20 @@ class TestGrokGenerator(unittest.IsolatedAsyncioTestCase):
 class TestGrokSettingsAPI(unittest.TestCase):
 
     def setUp(self):
+        import tempfile
+        self.temp_env = tempfile.NamedTemporaryFile(suffix=".env", delete=False)
+        self.temp_env.close()
+        self.env_patch = patch.dict(os.environ, {"ENV_FILE": self.temp_env.name})
+        self.env_patch.start()
         self.client = TestClient(app)
+
+    def tearDown(self):
+        self.env_patch.stop()
+        if os.path.exists(self.temp_env.name):
+            try:
+                os.remove(self.temp_env.name)
+            except OSError:
+                pass
 
     def test_settings_get_and_post_grok(self):
         # 1. Update settings with Grok provider and xAI key

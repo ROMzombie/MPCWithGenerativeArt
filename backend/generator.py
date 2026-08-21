@@ -201,9 +201,9 @@ class GeminiImageGenerator(BaseImageGenerator):
                 focal_center=focal_center,
             )
 
-        # Formulate prompt optimized for full-art card background
+        # Formulate prompt optimized for full-art background
         full_prompt = (
-            f"Full art fantasy trading card illustration of: {prompt}. "
+            f"Full-bleed vertical fantasy digital painting of: {prompt}. "
             f"Primary subject composed and centered in upper frame, atmospheric extended background below, "
             f"highly detailed digital painting, 8k resolution, cinematic lighting, vertical composition."
         )
@@ -269,7 +269,7 @@ class OpenAIImageGenerator(BaseImageGenerator):
                 focal_center=focal_center,
             )
 
-        full_prompt = f"Full art fantasy trading card artwork: {prompt}, main focal character in upper half, vibrant atmospheric digital painting."
+        full_prompt = f"Full-bleed vertical fantasy digital painting of: {prompt}, main focal character in upper half, vibrant atmospheric digital painting."
         url = "https://api.openai.com/v1/images/generations"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         payload = {
@@ -333,7 +333,7 @@ class GrokImageGenerator(BaseImageGenerator):
             )
 
         full_prompt = (
-            f"Full art fantasy trading card artwork: {prompt}, "
+            f"Full-bleed vertical fantasy digital painting of: {prompt}, "
             f"primary subject composed and centered in upper composition, atmospheric extended background, "
             f"highly detailed digital painting, vibrant cinematic lighting, vertical composition."
         )
@@ -445,7 +445,7 @@ class PerchanceImageGenerator(BaseImageGenerator):
                     if not target_frame:
                         raise TimeoutError("Could not locate Perchance generator frame.")
 
-                    full_prompt = f"Full art fantasy trading card background of {prompt}, main subject in upper half, detailed digital painting, vibrant lighting"
+                    full_prompt = f"Full-bleed vertical fantasy digital painting of {prompt}, main subject in upper half, detailed digital painting, vibrant lighting"
 
                     inp = await target_frame.wait_for_selector("#description-search-input", timeout=15000)
                     await inp.fill(full_prompt)
@@ -616,7 +616,7 @@ class JanusProImageGenerator(BaseImageGenerator):
         focal_center: Optional[Tuple[int, int]] = None,
     ) -> Image.Image:
         try:
-            full_prompt = f"Full art fantasy trading card artwork of {prompt}, main subject centered in upper composition, detailed digital painting, vibrant lighting"
+            full_prompt = f"Full-bleed vertical fantasy digital painting of {prompt}, main subject centered in upper composition, detailed digital painting, vibrant lighting"
             seed_str = f"{card_name}_{prompt}"
             seed = int(hashlib.sha256(seed_str.encode()).hexdigest(), 16) % 100000
 
