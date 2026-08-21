@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+import unittest.mock
 from fastapi.testclient import TestClient
 from backend.app import app
 
@@ -43,8 +44,8 @@ class TestFastAPIEndpoints(unittest.TestCase):
         data = resp.json()
         self.assertTrue(data["valid"])
         self.assertEqual(data["global_prompt"], "in cyberpunk futuristic style")
-        self.assertEqual(data["cards"][0]["prompt"], "Pixie in cyberpunk futuristic style")
-        self.assertEqual(data["cards"][1]["prompt"], "Boy in cyberpunk futuristic style")
+        self.assertEqual(data["cards"][0]["prompt"], "in cyberpunk futuristic style Pixie")
+        self.assertEqual(data["cards"][1]["prompt"], "in cyberpunk futuristic style Boy")
 
     def test_parse_file_with_global_prompt(self):
         file_content = b"# retro synthwave style\n1 Byode, Inverse Sun (PH21) 3\tPixie\n"
@@ -56,7 +57,7 @@ class TestFastAPIEndpoints(unittest.TestCase):
         data = resp.json()
         self.assertTrue(data["valid"])
         self.assertEqual(data["global_prompt"], "retro synthwave style")
-        self.assertEqual(data["cards"][0]["prompt"], "Pixie retro synthwave style")
+        self.assertEqual(data["cards"][0]["prompt"], "retro synthwave style Pixie")
 
     def setUp(self):
         import tempfile

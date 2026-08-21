@@ -67,11 +67,11 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
         self.assertEqual(len(res.cards), 2)
         self.assertEqual(
             res.cards[0].prompt,
-            "An anime girl dressed like a pixie in watercolor studio ghibli fantasy anime style",
+            "in watercolor studio ghibli fantasy anime style An anime girl dressed like a pixie",
         )
         self.assertEqual(
             res.cards[1].prompt,
-            "An anime boy in a library holding a book in watercolor studio ghibli fantasy anime style",
+            "in watercolor studio ghibli fantasy anime style An anime boy in a library holding a book",
         )
 
     def test_parser_global_prompt_variations(self):
@@ -87,8 +87,8 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
         res = parse_deck_text(deck_text)
         self.assertTrue(res.valid)
         self.assertEqual(res.global_prompt, "vibrant 8k digital art")
-        self.assertEqual(res.cards[0].prompt, "Pixie vibrant 8k digital art")
-        self.assertEqual(res.cards[1].prompt, "Boy with book vibrant 8k digital art")
+        self.assertEqual(res.cards[0].prompt, "vibrant 8k digital art Pixie")
+        self.assertEqual(res.cards[1].prompt, "vibrant 8k digital art Boy with book")
 
         # Comment on first line with // is not global prompt
         deck_no_global = """// just a regular comment

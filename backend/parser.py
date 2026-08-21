@@ -53,7 +53,7 @@ def parse_deck_text(text: str) -> ParseResult:
     Copies CardName (set) CollectorNumber\tprompt
 
     If the first line (or first non-empty line) starts with '#', the following
-    text is treated as a global prompt that is appended to each card prompt in the file.
+    text is treated as a global prompt that is prepended to each card prompt in the file.
 
     Returns a ParseResult with structured CardItems or validation errors.
     """
@@ -101,7 +101,7 @@ def parse_deck_text(text: str) -> ParseResult:
                 continue
 
             if raw_prompt and global_prompt:
-                prompt = f"{raw_prompt} {global_prompt}"
+                prompt = f"{global_prompt} {raw_prompt}"
             elif raw_prompt:
                 prompt = raw_prompt
             else:
@@ -143,7 +143,7 @@ def parse_deck_text(text: str) -> ParseResult:
                     continue
 
                 if prompt_part and global_prompt:
-                    prompt = f"{prompt_part} {global_prompt}"
+                    prompt = f"{global_prompt} {prompt_part}"
                 elif prompt_part:
                     prompt = prompt_part
                 else:
