@@ -1,8 +1,8 @@
-"""Card image compositor, art box detector, and 800 DPI MPC exporter."""
+"""Card image compositor, card box detector, exclusion masking, and 800 DPI MPC exporter."""
 
 import os
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any, Union
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 OUTPUT_DIR = Path("output/cards")
@@ -83,58 +83,195 @@ def detect_art_box(card_img: Image.Image, art_crop_img: Optional[Image.Image] = 
     return default_box
 
 
-def composite_card(
+def detect_card_boxes(
+    card_img: Image.Image,
+    art_crop_img: Optional[Image.Image] = None,
+    type_line: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Detects the exact borders of the card rules and statistic text boxes,
+    along with art box, title header, type line, and polygonal badges (e.g. loyalty shields).
+    Returns a dict containing detected bounding boxes and polygonal shapes.
+    """
+    cw, ch = card_img.size
+    sx = cw / 745.0
+    sy = ch / 1040.0
+
+    # 1. Art Box Detection
+    art_box = detect_art_box(card_img, art_crop_img)
+
+    # 2. Title Box and Type Line Box (precise pill bounds)
+    title_box = (int(44 * sx), int(38 * sy), int(701 * sx), int(88 * sy))
+    type_box = (int(44 * sx), int(584 * sy), int(701 * sx), int(638 * sy))
+
+    # 3. Rules Text Box and Statistic Elements
+    t_lower = (type_line or "").lower()
+    stat_box = None
+    stat_polygon = None
+
+    if "walker" in t_lower:
+        # Planeswalker / Universewalker layout
+        rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(948 * sy))
+        # Irregular polygonal loyalty shield badge (notched top, vertical sides, chevron pointed tip)
+        stat_polygon = [
+            (int(604 * sx), int(928 * sy)),
+            (int(654 * sx), int(934 * sy)),
+            (int(704 * sx), int(928 * sy)),
+            (int(709 * sx), int(946 * sy)),
+            (int(709 * sx), int(968 * sy)),
+            (int(654 * sx), int(990 * sy)),
+            (int(599 * sx), int(968 * sy)),
+            (int(599 * sx), int(946 * sy)),
+        ]
+        stat_box = (int(599 * sx), int(928 * sy), int(709 * sx), int(990 * sy))
+    elif any(k in t_lower for k in ["creature", "vehicle"]):
+        # Creature / Vehicle layout with Power & Toughness box
+        rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(930 * sy))
+        stat_box = (int(560 * sx), int(884 * sy), int(700 * sx), int(960 * sy))
+    elif any(k in t_lower for k in ["battle", "siege"]):
+        # Battle layout with Defense box
+        rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(930 * sy))
+        stat_box = (int(565 * sx), int(884 * sy), int(700 * sx), int(960 * sy))
+    else:
+        # Standard non-creature layout (Enchantment, Instant, Sorcery, Artifact, Land)
+        rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
+
+    return {
+        "art_box": art_box,
+        "rules_box": rules_box,
+        "stat_box": stat_box,
+        "stat_polygon": stat_polygon,
+        "title_box": title_box,
+        "type_box": type_box,
+    }
+
+
+def create_card_exclusion_mask(
+    card_img: Image.Image,
+    card_boxes: Dict[str, Any],
+    feather_radius: float = 0.5,
+) -> Image.Image:
+    """
+    Constructs an alpha mask that excludes (preserves) the card rules text box,
+    statistic text box/polygons (such as Planeswalker loyalty shields), title bar, and type line
+    with smooth beveled corners, while opening the art frame and card backgrounds to reveal
+    the full-art generative background.
+    """
+    cw, ch = card_img.size
+    sx = cw / 745.0
+    sy = ch / 1040.0
+    mask = Image.new("L", (cw, ch), 0)
+    draw = ImageDraw.Draw(mask)
+
+    # 1. Preserve Title Header (Card name & mana cost)
+    tb = card_boxes.get("title_box") or (int(44 * sx), int(38 * sy), int(701 * sx), int(88 * sy))
+    draw.rounded_rectangle([tb[0], tb[1], tb[2], tb[3]], radius=max(4, int(14 * sx)), fill=255)
+
+    # 2. Preserve Type Line
+    typ = card_boxes.get("type_box") or (int(44 * sx), int(584 * sy), int(701 * sx), int(638 * sy))
+    draw.rounded_rectangle([typ[0], typ[1], typ[2], typ[3]], radius=max(4, int(14 * sx)), fill=255)
+
+    # 3. Preserve Rules Text Box
+    rb = card_boxes.get("rules_box") or (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
+    draw.rounded_rectangle([rb[0], rb[1], rb[2], rb[3]], radius=max(6, int(14 * sx)), fill=255)
+
+    # 4. Preserve Statistic Text Box / Polygonal Shield if present
+    stat_poly = card_boxes.get("stat_polygon")
+    if stat_poly:
+        draw.polygon(stat_poly, fill=255)
+    else:
+        sb = card_boxes.get("stat_box")
+        if sb:
+            draw.rounded_rectangle([sb[0], sb[1], sb[2], sb[3]], radius=max(4, int(12 * sx)), fill=255)
+
+    # Apply slight feathering for clean seamless integration
+    if feather_radius > 0:
+        mask = mask.filter(ImageFilter.GaussianBlur(radius=feather_radius))
+
+    return mask
+
+
+def composite_full_art_card(
     card_frame_img: Image.Image,
     generated_art_img: Image.Image,
-    art_box: Tuple[int, int, int, int],
+    card_boxes: Dict[str, Any],
     target_dpi: int = 800,
     target_width: int = MPC_800DPI_WIDTH,
     target_height: int = MPC_800DPI_HEIGHT,
 ) -> Image.Image:
     """
-    Composites generated art into the card frame art box,
-    upscales the card to 800 DPI print dimensions, and embeds print resolution.
+    Composites a full-art background image with masked card rules and statistic text boxes,
+    upscales to 800 DPI print dimensions, and embeds print resolution.
+    The generative art is fitted preserving aspect ratio, centered on the main art frame.
     """
-    x1, y1, x2, y2 = art_box
-    box_w = max(10, x2 - x1)
-    box_h = max(10, y2 - y1)
+    card_rgba = card_frame_img.convert("RGBA")
+    cw, ch = card_rgba.size
 
-    # 1. Resize generated art to fit the art box perfectly
-    art_resized = generated_art_img.resize((box_w, box_h), Image.Resampling.LANCZOS).convert("RGBA")
+    # Fit full-art generated image preserving aspect ratio centered on the art frame
+    art_full = ImageOps.fit(
+        generated_art_img.convert("RGBA"),
+        (cw, ch),
+        method=Image.Resampling.LANCZOS,
+        centering=(0.5, 0.33),
+    )
 
-    # 2. Convert base card image to RGBA
-    card_composite = card_frame_img.convert("RGBA")
+    # Generate exclusion mask for preserved card elements
+    mask = create_card_exclusion_mask(card_rgba, card_boxes, feather_radius=0.5)
 
-    # 3. Create a rounded-corner / feathered mask for smooth frame blending
-    mask = Image.new("L", (box_w, box_h), 255)
-    draw_mask = ImageDraw.Draw(mask)
-    corner_radius = max(2, int(box_w * 0.015))
-    # Beveled rounded rectangle for clean frame insertion
-    draw_mask.rounded_rectangle([0, 0, box_w - 1, box_h - 1], radius=corner_radius, fill=255)
-    mask = mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+    # Start with full art background and overlay preserved card elements
+    composite = art_full.copy()
+    composite.paste(card_rgba, (0, 0), mask)
 
-    # 4. Paste generated art into art box region
-    card_composite.paste(art_resized, (x1, y1), mask)
+    # Upscale composite card to 800 DPI target MPC dimensions
+    scale_factor = min(target_width / cw, target_height / ch)
+    scaled_w = int(cw * scale_factor)
+    scaled_h = int(ch * scale_factor)
 
-    # 5. Upscale composite card to 800 DPI target MPC dimensions
-    # If the aspect ratio slightly differs from MPC bleed poker card, add bleed border
-    card_w, card_h = card_composite.size
-    scale_factor = min(target_width / card_w, target_height / card_h)
+    scaled_card = composite.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
 
-    scaled_w = int(card_w * scale_factor)
-    scaled_h = int(card_h * scale_factor)
-
-    scaled_card = card_composite.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
-
-    # Create full canvas with MPC bleed border (using black / dark card edge)
+    # Create full canvas with MPC bleed border
     final_canvas = Image.new("RGB", (target_width, target_height), (12, 12, 12))
-    
+
     # Center scaled card on bleed canvas
     offset_x = (target_width - scaled_w) // 2
     offset_y = (target_height - scaled_h) // 2
     final_canvas.paste(scaled_card.convert("RGB"), (offset_x, offset_y))
 
     return final_canvas
+
+
+def composite_card(
+    card_frame_img: Image.Image,
+    generated_art_img: Image.Image,
+    art_box: Optional[Union[Tuple[int, int, int, int], Dict[str, Any]]] = None,
+    card_boxes: Optional[Dict[str, Any]] = None,
+    target_dpi: int = 800,
+    target_width: int = MPC_800DPI_WIDTH,
+    target_height: int = MPC_800DPI_HEIGHT,
+) -> Image.Image:
+    """
+    Unified card compositor that performs full-art background placement
+    with card rules and statistic text box exclusion masking.
+    """
+    # If card_boxes is provided or passed via art_box dict
+    if isinstance(art_box, dict):
+        boxes = art_box
+    elif card_boxes is not None:
+        boxes = card_boxes
+    else:
+        # Auto-detect boxes if not explicitly provided
+        boxes = detect_card_boxes(card_frame_img)
+        if isinstance(art_box, tuple) and len(art_box) == 4:
+            boxes["art_box"] = art_box
+
+    return composite_full_art_card(
+        card_frame_img=card_frame_img,
+        generated_art_img=generated_art_img,
+        card_boxes=boxes,
+        target_dpi=target_dpi,
+        target_width=target_width,
+        target_height=target_height,
+    )
 
 
 def save_card_outputs(

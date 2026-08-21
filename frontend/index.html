@@ -151,12 +151,20 @@
             Generative Art Provider:
           </label>
           <select id="providerSelect" style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);">
+            <option value="grok">⚡ xAI Grok (grok-imagine-image-2.0)</option>
             <option value="janus" selected>🌌 DeepSeek Janus-Pro-7B (Hugging Face Space)</option>
             <option value="perchance">🔮 Perchance AI Art Generator (Free / Zero-Config)</option>
             <option value="mock">🎨 Algorithmic Procedural Generator (Zero-Config / Built-in)</option>
             <option value="gemini">✨ Google Gemini / Imagen 3</option>
             <option value="openai">🤖 OpenAI DALL-E 3</option>
           </select>
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
+            xAI Grok API Key (Optional):
+          </label>
+          <input type="password" id="xaiApiKey" placeholder="Enter XAI_API_KEY (e.g. xai-...)..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
         </div>
 
         <div>

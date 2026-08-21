@@ -392,6 +392,9 @@ async function loadSettings() {
     if (data.provider) {
       document.getElementById("providerSelect").value = data.provider;
     }
+    if (data.xai_api_key) {
+      document.getElementById("xaiApiKey").value = data.xai_api_key;
+    }
     if (data.hf_token) {
       document.getElementById("hfToken").value = data.hf_token;
     }
@@ -410,6 +413,7 @@ function openSettingsModal() {
 
 async function saveSettings() {
   const provider = document.getElementById("providerSelect").value;
+  const xai_api_key = document.getElementById("xaiApiKey").value;
   const hf_token = document.getElementById("hfToken").value;
   const gemini_api_key = document.getElementById("geminiApiKey").value;
   const openai_api_key = document.getElementById("openaiApiKey").value;
@@ -418,7 +422,7 @@ async function saveSettings() {
     await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, hf_token, gemini_api_key, openai_api_key }),
+      body: JSON.stringify({ provider, xai_api_key, hf_token, gemini_api_key, openai_api_key }),
     });
     alert("Settings saved successfully!");
     document.getElementById("settingsModal").classList.remove("active");

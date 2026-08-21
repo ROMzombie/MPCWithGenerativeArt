@@ -4,3 +4,15 @@
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Environment configurations & local secrets
+.env
+.env.local
+
+# Python cache & artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+

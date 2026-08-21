@@ -20,6 +20,10 @@ class CardItem(BaseModel):
     scryfall_png_url: Optional[str] = Field(None, description="Original Scryfall card PNG URL")
     scryfall_art_url: Optional[str] = Field(None, description="Original Scryfall art crop URL")
     art_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for art (x1, y1, x2, y2)")
+    rules_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for rules text (x1, y1, x2, y2)")
+    stat_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for power/toughness or loyalty stats (x1, y1, x2, y2)")
+    title_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for card name/mana header (x1, y1, x2, y2)")
+    type_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for type line (x1, y1, x2, y2)")
     created_at: Optional[str] = None
 
 

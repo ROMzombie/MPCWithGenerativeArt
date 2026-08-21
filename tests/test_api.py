@@ -42,6 +42,85 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertEqual(post_resp.status_code, 200)
         self.assertEqual(post_resp.json()["provider"], "mock")
 
+    def test_settings_persistence_in_dotenv(self):
+        import os
+        from pathlib import Path
+        from dotenv import dotenv_values
+        from backend.app import AppState, ENV_FILE
+
+        # Test updating settings saves to .env
+        post_resp = client.post("/api/settings", json={"provider": "grok", "xai_api_key": "test_xai_secret_123"})
+        self.assertEqual(post_resp.status_code, 200)
+        self.assertEqual(post_resp.json()["provider"], "grok")
+
+        # Verify .env file on disk contains the updated values
+        self.assertTrue(ENV_FILE.exists())
+        env_vals = dotenv_values(str(ENV_FILE))
+        self.assertEqual(env_vals.get("GENERATOR_PROVIDER"), "grok")
+        self.assertEqual(env_vals.get("XAI_API_KEY"), "test_xai_secret_123")
+
+        # Verify AppState loads GENERATOR_PROVIDER from environment
+        with unittest.mock.patch.dict(os.environ, {"GENERATOR_PROVIDER": "gemini"}, clear=False):
+            new_state = AppState()
+            self.assertEqual(new_state.provider, "gemini")
+
+    def test_generator_prompts_exclude_card_name(self):
+        from unittest.mock import patch, AsyncMock, MagicMock
+        import io
+        import base64
+        from PIL import Image
+        from backend.generator import GeminiImageGenerator, OpenAIImageGenerator
+
+        # 1. Test Gemini Image Generator does not include card_name in prompt payload
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        sample_img = Image.new("RGB", (100, 100), (255, 255, 255))
+        buf = io.BytesIO()
+        sample_img.save(buf, format="PNG")
+        b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
+        mock_resp.json.return_value = {"predictions": [{"bytesBase64Encoded": b64_img}]}
+
+        async def run_gemini():
+            with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+                mock_post.return_value = mock_resp
+                gen = GeminiImageGenerator(api_key="gemini_dummy_key")
+                await gen.generate_art(
+                    prompt="A mystical fairy in an enchanted forest",
+                    card_name="Pixie Queen",
+                    target_width=300,
+                    target_height=400,
+                )
+                mock_post.assert_called_once()
+                sent_payload = mock_post.call_args.kwargs["json"]
+                sent_prompt = sent_payload["instances"][0]["prompt"]
+                self.assertNotIn("Pixie Queen", sent_prompt)
+                self.assertIn("A mystical fairy in an enchanted forest", sent_prompt)
+
+        # 2. Test OpenAI Image Generator does not include card_name in prompt payload
+        mock_openai_resp = MagicMock()
+        mock_openai_resp.status_code = 200
+        mock_openai_resp.json.return_value = {"data": [{"b64_json": b64_img}]}
+
+        async def run_openai():
+            with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+                mock_post.return_value = mock_openai_resp
+                gen = OpenAIImageGenerator(api_key="openai_dummy_key")
+                await gen.generate_art(
+                    prompt="A massive dark dragon soaring across volcanoes",
+                    card_name="Infernal Dragon",
+                    target_width=300,
+                    target_height=400,
+                )
+                mock_post.assert_called_once()
+                sent_payload = mock_post.call_args.kwargs["json"]
+                sent_prompt = sent_payload["prompt"]
+                self.assertNotIn("Infernal Dragon", sent_prompt)
+                self.assertIn("A massive dark dragon soaring across volcanoes", sent_prompt)
+
+        import asyncio
+        asyncio.run(run_gemini())
+        asyncio.run(run_openai())
+
     def test_cards_and_export_flow(self):
         # 1. Parse sample deck
         deck = "1 Byode, Inverse Sun (PH21) 3\tAn anime pixie"

@@ -7,9 +7,9 @@ import hashlib
 import io
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 import httpx
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageOps
 
 
 class BaseImageGenerator(ABC):
@@ -22,15 +22,16 @@ class BaseImageGenerator(ABC):
         target_height: int,
         colors: Optional[List[str]] = None,
         flavor_name: Optional[str] = None,
+        focal_center: Optional[Tuple[int, int]] = None,
     ) -> Image.Image:
-        """Generates an image based on prompt and target dimensions."""
+        """Generates an image based on prompt, target dimensions, and optional focal center coordinates."""
         pass
 
 
 class MockProceduralGenerator(BaseImageGenerator):
     """
     High-quality algorithmic procedural art generator that creates
-    stylized fantasy / anime generative card art out of the box without external API keys.
+    stylized fantasy / anime generative full-art card backgrounds out of the box without external API keys.
     """
 
     COLOR_MAP = {
@@ -49,6 +50,7 @@ class MockProceduralGenerator(BaseImageGenerator):
         target_height: int,
         colors: Optional[List[str]] = None,
         flavor_name: Optional[str] = None,
+        focal_center: Optional[Tuple[int, int]] = None,
     ) -> Image.Image:
         # Generate deterministic seed from prompt and card name
         seed_str = f"{card_name}_{prompt}"
@@ -89,26 +91,33 @@ class MockProceduralGenerator(BaseImageGenerator):
         )
         c3 = (rng.randint(20, 60), rng.randint(20, 60), rng.randint(30, 80))
 
-        # 1. Background multi-point gradient
-        cx, cy = target_width // 2, target_height // 2
+        # Default focal center to art frame location (~33% down from top) if not provided
+        if focal_center is not None:
+            cx, cy = focal_center
+        else:
+            cx = target_width // 2
+            cy = int(target_height * 0.335)
+
+        # 1. Background multi-point gradient radiating from focal center
         for y in range(0, target_height, 4):
             t_y = y / target_height
             for x in range(0, target_width, 4):
                 t_x = x / target_width
-                r = int(c3[0] * (1 - t_y) + c1[0] * t_y * 0.7 + c2[0] * t_x * 0.3)
-                g = int(c3[1] * (1 - t_y) + c1[1] * t_y * 0.7 + c2[1] * t_x * 0.3)
-                b = int(c3[2] * (1 - t_y) + c1[2] * t_y * 0.7 + c2[2] * t_x * 0.3)
+                dist = math.sqrt(((x - cx) / target_width) ** 2 + ((y - cy) / target_height) ** 2)
+                falloff = max(0.0, 1.0 - min(1.0, dist * 1.5))
+                r = int(c3[0] * (1 - t_y) + c1[0] * falloff * 0.7 + c2[0] * t_x * 0.3)
+                g = int(c3[1] * (1 - t_y) + c1[1] * falloff * 0.7 + c2[1] * t_x * 0.3)
+                b = int(c3[2] * (1 - t_y) + c1[2] * falloff * 0.7 + c2[2] * t_x * 0.3)
                 draw.rectangle([x, y, x + 4, y + 4], fill=(min(255, r), min(255, g), min(255, b)))
 
-        # 2. Glowing celestial / magic orbs and nebulae
-        num_orbs = rng.randint(4, 8)
+        # 2. Glowing celestial / magic orbs and nebulae centered around art region
+        num_orbs = rng.randint(5, 9)
         for _ in range(num_orbs):
-            ox = rng.randint(int(target_width * 0.1), int(target_width * 0.9))
-            oy = rng.randint(int(target_height * 0.1), int(target_height * 0.9))
+            ox = cx + rng.randint(int(-target_width * 0.35), int(target_width * 0.35))
+            oy = cy + rng.randint(int(-target_height * 0.25), int(target_height * 0.35))
             radius = rng.randint(int(target_width * 0.15), int(target_width * 0.45))
             orb_color = rng.choice(theme_colors)
             for step in range(radius, 0, -8):
-                alpha = int(180 * (1 - (step / radius) ** 0.8))
                 col = (
                     min(255, int(orb_color[0] + (255 - orb_color[0]) * (1 - step / radius))),
                     min(255, int(orb_color[1] + (255 - orb_color[1]) * (1 - step / radius))),
@@ -117,7 +126,7 @@ class MockProceduralGenerator(BaseImageGenerator):
                 draw.ellipse([ox - step, oy - step, ox + step, oy + step], outline=col, width=4)
 
         # 3. Dynamic atmospheric geometric fractal arcs / rune lines
-        for i in range(rng.randint(6, 12)):
+        for i in range(rng.randint(8, 14)):
             start_x = rng.randint(0, target_width)
             start_y = rng.randint(0, target_height)
             angle = rng.uniform(0, 2 * math.pi)
@@ -126,10 +135,10 @@ class MockProceduralGenerator(BaseImageGenerator):
             end_y = start_y + int(length * math.sin(angle))
             draw.line([(start_x, start_y), (end_x, end_y)], fill=(255, 255, 255), width=rng.randint(1, 3))
 
-        # 4. Stylized character / silhouette focal figure
-        focal_x = int(target_width * rng.uniform(0.4, 0.6))
-        focal_y = int(target_height * rng.uniform(0.45, 0.65))
-        focal_size = int(min(target_width, target_height) * 0.32)
+        # 4. Stylized character / silhouette focal figure precisely centered on the art frame
+        focal_x = int(cx + rng.uniform(-0.02, 0.02) * target_width)
+        focal_y = int(cy + rng.uniform(-0.02, 0.02) * target_height)
+        focal_size = int(min(target_width, target_height) * 0.22)
 
         # Halo aura behind subject
         for r in range(focal_size + 40, focal_size, -4):
@@ -147,29 +156,12 @@ class MockProceduralGenerator(BaseImageGenerator):
             width=5,
         )
 
-        # 5. Fine sparkles / star field
-        for _ in range(120):
+        # 5. Fine sparkles / star field across the full card background
+        for _ in range(160):
             sx = rng.randint(0, target_width - 1)
             sy = rng.randint(0, target_height - 1)
             intensity = rng.randint(150, 255)
             draw.point((sx, sy), fill=(intensity, intensity, intensity))
-
-        # 6. Subtle stylish typography overlay on generated art
-        try:
-            font_title = ImageFont.load_default()
-        except Exception:
-            font_title = None
-
-        # Text banner on art bottom
-        banner_h = int(target_height * 0.14)
-        banner_y = target_height - banner_h
-        draw.rectangle([0, banner_y, target_width, target_height], fill=(10, 12, 18))
-        draw.line([(0, banner_y), (target_width, banner_y)], fill=(210, 180, 100), width=2)
-
-        # Write prompt on the procedural art
-        clean_prompt = prompt[:75] + ("..." if len(prompt) > 75 else "")
-        draw.text((16, banner_y + 8), f"PROMPT: {clean_prompt}", fill=(240, 240, 245), font=font_title)
-        draw.text((16, banner_y + banner_h - 18), f"[AI Generative Art Preview: {card_name}]", fill=(160, 170, 190), font=font_title)
 
         # Smooth artistic blur & slight sharpening filter
         img = img.filter(ImageFilter.SMOOTH_MORE)
@@ -195,20 +187,33 @@ class GeminiImageGenerator(BaseImageGenerator):
         target_height: int,
         colors: Optional[List[str]] = None,
         flavor_name: Optional[str] = None,
+        focal_center: Optional[Tuple[int, int]] = None,
     ) -> Image.Image:
         if not self.api_key:
             # Fallback to procedural generator if no key provided
-            return await MockProceduralGenerator().generate_art(prompt, card_name, target_width, target_height, colors, flavor_name)
+            return await MockProceduralGenerator().generate_art(
+                prompt=prompt,
+                card_name=card_name,
+                target_width=target_width,
+                target_height=target_height,
+                colors=colors,
+                flavor_name=flavor_name,
+                focal_center=focal_center,
+            )
 
-        # Formulate prompt optimized for card art
-        full_prompt = f"Fantasy trading card illustration of: {prompt}. Card subject: {card_name}. Highly detailed digital painting, 8k resolution, cinematic lighting, card art composition, clean framing."
+        # Formulate prompt optimized for full-art card background
+        full_prompt = (
+            f"Full art fantasy trading card illustration of: {prompt}. "
+            f"Primary subject composed and centered in upper frame, atmospheric extended background below, "
+            f"highly detailed digital painting, 8k resolution, cinematic lighting, vertical composition."
+        )
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key={self.api_key}"
         payload = {
             "instances": [{"prompt": full_prompt}],
             "parameters": {
                 "sampleCount": 1,
-                "aspectRatio": "4:3" if target_width > target_height else "3:4",
+                "aspectRatio": "3:4" if target_height > target_width else "4:3",
                 "outputOptions": {"mimeType": "image/png"},
             },
         }
@@ -222,11 +227,19 @@ class GeminiImageGenerator(BaseImageGenerator):
                     import base64
                     img_bytes = base64.b64decode(predictions[0]["bytesBase64Encoded"])
                     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-                    return img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                    return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
 
         # If API failed, fallback gracefully to procedural mock
         print(f"[Gemini Generator] Imagen API request failed (HTTP {resp.status_code if 'resp' in locals() else 'unknown'}). Using procedural fallback.")
-        return await MockProceduralGenerator().generate_art(prompt, card_name, target_width, target_height, colors, flavor_name)
+        return await MockProceduralGenerator().generate_art(
+            prompt=prompt,
+            card_name=card_name,
+            target_width=target_width,
+            target_height=target_height,
+            colors=colors,
+            flavor_name=flavor_name,
+            focal_center=focal_center,
+        )
 
 
 class OpenAIImageGenerator(BaseImageGenerator):
@@ -243,18 +256,27 @@ class OpenAIImageGenerator(BaseImageGenerator):
         target_height: int,
         colors: Optional[List[str]] = None,
         flavor_name: Optional[str] = None,
+        focal_center: Optional[Tuple[int, int]] = None,
     ) -> Image.Image:
         if not self.api_key:
-            return await MockProceduralGenerator().generate_art(prompt, card_name, target_width, target_height, colors, flavor_name)
+            return await MockProceduralGenerator().generate_art(
+                prompt=prompt,
+                card_name=card_name,
+                target_width=target_width,
+                target_height=target_height,
+                colors=colors,
+                flavor_name=flavor_name,
+                focal_center=focal_center,
+            )
 
-        full_prompt = f"Fantasy card game artwork: {prompt}, character {card_name}, vibrant, detailed digital art."
+        full_prompt = f"Full art fantasy trading card artwork: {prompt}, main focal character in upper half, vibrant atmospheric digital painting."
         url = "https://api.openai.com/v1/images/generations"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         payload = {
             "model": "dall-e-3",
             "prompt": full_prompt,
             "n": 1,
-            "size": "1024x1024",
+            "size": "1024x1792" if target_height > target_width else "1024x1024",
             "response_format": "b64_json",
         }
 
@@ -266,7 +288,107 @@ class OpenAIImageGenerator(BaseImageGenerator):
                 import base64
                 img_bytes = base64.b64decode(b64)
                 img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-                return img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
+
+        return await MockProceduralGenerator().generate_art(
+            prompt=prompt,
+            card_name=card_name,
+            target_width=target_width,
+            target_height=target_height,
+            colors=colors,
+            flavor_name=flavor_name,
+            focal_center=focal_center,
+        )
+
+
+class GrokImageGenerator(BaseImageGenerator):
+    """Generates images using xAI Grok API (grok-imagine-image-2.0)."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "grok-imagine-image-2.0"):
+        raw_key = api_key or os.environ.get("XAI_API_KEY") or os.environ.get("GROK_API_KEY", "")
+        self.api_key = raw_key.strip()
+        if self.api_key.lower().startswith("bearer "):
+            self.api_key = self.api_key[7:].strip()
+        self.model = model
+
+    async def generate_art(
+        self,
+        prompt: str,
+        card_name: str,
+        target_width: int,
+        target_height: int,
+        colors: Optional[List[str]] = None,
+        flavor_name: Optional[str] = None,
+        focal_center: Optional[Tuple[int, int]] = None,
+    ) -> Image.Image:
+        if not self.api_key:
+            return await MockProceduralGenerator().generate_art(
+                prompt=prompt,
+                card_name=card_name,
+                target_width=target_width,
+                target_height=target_height,
+                colors=colors,
+                flavor_name=flavor_name,
+                focal_center=focal_center,
+            )
+
+        full_prompt = (
+            f"Full art fantasy trading card artwork: {prompt}, "
+            f"primary subject composed and centered in upper composition, atmospheric extended background, "
+            f"highly detailed digital painting, vibrant cinematic lighting, vertical composition."
+        )
+        url = "https://api.x.ai/v1/images/generations"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        aspect_ratio = "3:4" if target_height > target_width else "4:3"
+        payload = {
+            "model": self.model,
+            "prompt": full_prompt,
+            "n": 1,
+            "aspect_ratio": aspect_ratio,
+        }
+
+        try:
+            # Extended timeout for AI image generation (up to 120s)
+            timeout_config = httpx.Timeout(120.0, connect=30.0, read=120.0, write=30.0)
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    predictions = data.get("data", [])
+                    if predictions:
+                        item = predictions[0]
+                        if "b64_json" in item and item["b64_json"]:
+                            import base64
+                            img_bytes = base64.b64decode(item["b64_json"])
+                            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                            return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
+                        elif "url" in item and item["url"]:
+                            img_resp = await client.get(item["url"], timeout=60.0)
+                            if img_resp.status_code == 200:
+                                img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
+                                return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
+                            else:
+                                print(f"[Grok Generator] Failed to download generated image from URL (HTTP {img_resp.status_code}).")
+                else:
+                    error_detail = resp.text
+                    print(f"[Grok Generator] API request failed (HTTP {resp.status_code}: {error_detail}). Using procedural fallback.")
+        except Exception as e:
+            err_msg = str(e) or repr(e)
+            print(f"[Grok Generator] Generation failed ({type(e).__name__}: {err_msg}). Using procedural fallback.")
+
+        return await MockProceduralGenerator().generate_art(
+            prompt=prompt,
+            card_name=card_name,
+            target_width=target_width,
+            target_height=target_height,
+            colors=colors,
+            flavor_name=flavor_name,
+            focal_center=focal_center,
+        )
+
 
 class PerchanceImageGenerator(BaseImageGenerator):
     """
@@ -323,7 +445,7 @@ class PerchanceImageGenerator(BaseImageGenerator):
                     if not target_frame:
                         raise TimeoutError("Could not locate Perchance generator frame.")
 
-                    full_prompt = f"Fantasy trading card game artwork of {card_name}, {prompt}, detailed digital painting, vibrant lighting"
+                    full_prompt = f"Full art fantasy trading card background of {prompt}, main subject in upper half, detailed digital painting, vibrant lighting"
 
                     inp = await target_frame.wait_for_selector("#description-search-input", timeout=15000)
                     await inp.fill(full_prompt)
@@ -358,7 +480,7 @@ class PerchanceImageGenerator(BaseImageGenerator):
                         raise TimeoutError("Timed out waiting for Perchance art generation.")
 
                     pil_img = Image.open(io.BytesIO(new_img_bytes)).convert("RGB")
-                    return pil_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                    return ImageOps.fit(pil_img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
                 finally:
                     await page.close()
             finally:
@@ -385,6 +507,7 @@ class PerchanceImageGenerator(BaseImageGenerator):
         target_height: int,
         colors: Optional[List[str]] = None,
         flavor_name: Optional[str] = None,
+        focal_center: Optional[Tuple[int, int]] = None,
     ) -> Image.Image:
         try:
             async with self._lock:
@@ -407,6 +530,7 @@ class PerchanceImageGenerator(BaseImageGenerator):
                 target_height=target_height,
                 colors=colors,
                 flavor_name=flavor_name,
+                focal_center=focal_center,
             )
 
     async def close(self):
@@ -474,7 +598,6 @@ class JanusProImageGenerator(BaseImageGenerator):
         token = self.hf_token.strip() if self.hf_token else None
         client = Client(self.SPACE_ID, token=token)
         return client.predict(
-
             prompt=prompt,
             seed=seed,
             guidance=5.0,
@@ -490,9 +613,10 @@ class JanusProImageGenerator(BaseImageGenerator):
         target_height: int,
         colors: Optional[List[str]] = None,
         flavor_name: Optional[str] = None,
+        focal_center: Optional[Tuple[int, int]] = None,
     ) -> Image.Image:
         try:
-            full_prompt = f"Fantasy trading card artwork of {card_name}, {prompt}, detailed digital painting, vibrant lighting"
+            full_prompt = f"Full art fantasy trading card artwork of {prompt}, main subject centered in upper composition, detailed digital painting, vibrant lighting"
             seed_str = f"{card_name}_{prompt}"
             seed = int(hashlib.sha256(seed_str.encode()).hexdigest(), 16) % 100000
 
@@ -501,7 +625,7 @@ class JanusProImageGenerator(BaseImageGenerator):
 
             pil_img = self._extract_image_from_result(result)
             if pil_img is not None:
-                return pil_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                return ImageOps.fit(pil_img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
             else:
                 raise ValueError("No valid image could be extracted from Janus-Pro-7B response.")
 
@@ -514,6 +638,7 @@ class JanusProImageGenerator(BaseImageGenerator):
                 target_height=target_height,
                 colors=colors,
                 flavor_name=flavor_name,
+                focal_center=focal_center,
             )
 
 
@@ -522,14 +647,19 @@ _global_perchance_generator: Optional[PerchanceImageGenerator] = None
 
 
 def get_generator(
-    provider: str = "perchance",
+    provider: Optional[str] = None,
     api_key: Optional[str] = None,
     hf_token: Optional[str] = None,
+    xai_api_key: Optional[str] = None,
 ) -> BaseImageGenerator:
     """Factory to retrieve requested image generator."""
     global _global_perchance_generator
+    if not provider:
+        provider = os.environ.get("GENERATOR_PROVIDER") or os.environ.get("ART_GENERATOR") or os.environ.get("PROVIDER") or "perchance"
     p = provider.lower().strip()
-    if p in ["janus", "janus-pro", "janus-pro-7b", "deepseek", "deepseek-ai", "deepseek-ai/janus-pro-7b"]:
+    if p in ["grok", "xai", "grok-2", "grok-imagine", "grok-imagine-image", "grok-imagine-image-2.0", "x-ai"]:
+        return GrokImageGenerator(api_key=xai_api_key or api_key)
+    elif p in ["janus", "janus-pro", "janus-pro-7b", "deepseek", "deepseek-ai", "deepseek-ai/janus-pro-7b"]:
         return JanusProImageGenerator(hf_token=hf_token or api_key)
     elif p in ["perchance", "perchance-ai"]:
         if _global_perchance_generator is None:
@@ -541,5 +671,6 @@ def get_generator(
         return OpenAIImageGenerator(api_key=api_key)
     else:
         return MockProceduralGenerator()
+
 
 

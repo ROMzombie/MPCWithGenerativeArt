@@ -18,13 +18,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from dotenv import load_dotenv
-load_dotenv()
+from dotenv import load_dotenv, set_key
+ENV_FILE = Path(".env")
+load_dotenv(dotenv_path=ENV_FILE)
 
 from backend.parser import parse_deck_text, CardItem, ParseResult
 from backend.scryfall import scryfall_client
 from backend.generator import get_generator, MockProceduralGenerator
-from backend.compositor import detect_art_box, composite_card, save_card_outputs
+from backend.compositor import detect_card_boxes, detect_art_box, composite_card, composite_full_art_card, save_card_outputs
 from backend.mpc_autofill import generate_mpc_xml, create_mpc_zip_bundle, mpc_uploader
 from PIL import Image
 
@@ -52,7 +53,12 @@ class AppState:
         self.hf_token: str = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN", "")
         self.gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
         self.openai_api_key: str = os.environ.get("OPENAI_API_KEY", "")
-        if self.hf_token:
+        self.xai_api_key: str = os.environ.get("XAI_API_KEY", "") or os.environ.get("GROK_API_KEY", "")
+        
+        env_provider = os.environ.get("GENERATOR_PROVIDER") or os.environ.get("ART_GENERATOR") or os.environ.get("PROVIDER")
+        if env_provider:
+            self.provider: str = env_provider.strip().lower()
+        elif self.hf_token:
             self.provider: str = "janus"
         else:
             self.provider: str = "perchance"
@@ -105,6 +111,7 @@ class SettingsModel(BaseModel):
     hf_token: Optional[str] = None
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
+    xai_api_key: Optional[str] = None
 
 
 
@@ -159,20 +166,29 @@ async def process_single_card(card: CardItem):
         card_frame_img = Image.open(card_data.cached_png_path).convert("RGB")
         art_crop_img = Image.open(card_data.cached_art_path).convert("RGB") if card_data.cached_art_path else None
 
-        # 2. Detect exact art box coordinates
-        art_box = detect_art_box(card_frame_img, art_crop_img)
-        card.art_box = art_box
-        box_w = art_box[2] - art_box[0]
-        box_h = art_box[3] - art_box[1]
+        # 2. Detect exact card boxes (art box, rules text box, statistic box, headers)
+        card_boxes = detect_card_boxes(card_frame_img, art_crop_img, type_line=card_data.type_line)
+        card.art_box = card_boxes.get("art_box")
+        card.rules_box = card_boxes.get("rules_box")
+        card.stat_box = card_boxes.get("stat_box")
+        card.title_box = card_boxes.get("title_box")
+        card.type_box = card_boxes.get("type_box")
 
-        # 3. Generate custom art based on prompt
+        cw, ch = card_frame_img.size
+        art_box = card_boxes.get("art_box") or (0, 0, cw, ch // 2)
+        art_cx = (art_box[0] + art_box[2]) // 2
+        art_cy = (art_box[1] + art_box[3]) // 2
+
+        # 3. Generate custom full-art background centered on the main art frame
         card.status = "generating"
-        card.status_message = f"Generating card art ({state.provider}): '{card.prompt[:40]}...'"
+        card.status_message = f"Generating full-art card background ({state.provider}): '{card.prompt[:40]}...'"
         state.broadcast_card_update(card)
-        state.broadcast_log(f"Generating art for {card.card_name} with prompt: '{card.prompt}'")
+        state.broadcast_log(f"Generating full-art background for {card.card_name} with prompt: '{card.prompt}'")
 
         p = state.provider.lower().strip()
-        if p.startswith("janus") or p in ["deepseek", "deepseek-ai"]:
+        if p in ["grok", "xai", "grok-2", "grok-imagine", "grok-imagine-image", "grok-imagine-image-2.0", "x-ai"]:
+            generator = get_generator(state.provider, xai_api_key=state.xai_api_key)
+        elif p.startswith("janus") or p in ["deepseek", "deepseek-ai"]:
             generator = get_generator(state.provider, hf_token=state.hf_token)
         elif p in ["gemini", "imagen", "google"]:
             generator = get_generator(state.provider, api_key=state.gemini_api_key)
@@ -181,26 +197,26 @@ async def process_single_card(card: CardItem):
         else:
             generator = get_generator(state.provider)
 
-
         generated_art = await generator.generate_art(
             prompt=card.prompt,
             card_name=card.card_name,
-            target_width=box_w,
-            target_height=box_h,
+            target_width=cw,
+            target_height=ch,
             colors=card_data.colors,
             flavor_name=card_data.flavor_name,
+            focal_center=(art_cx, art_cy),
         )
 
-        # 4. Composite art into frame and upscale to 800 DPI MPC dimensions
+        # 4. Composite full-art background with masked card text boxes and upscale to 800 DPI MPC dimensions
         card.status = "compositing"
-        card.status_message = "Compositing card frame and upscaling to 800 DPI..."
+        card.status_message = "Compositing full-art card frame with text box masking and upscaling to 800 DPI..."
         state.broadcast_card_update(card)
-        state.broadcast_log(f"Compositing 800 DPI print image for {card.card_name}...")
+        state.broadcast_log(f"Compositing 800 DPI full-art print image for {card.card_name}...")
 
         final_composite = composite_card(
             card_frame_img=card_frame_img,
             generated_art_img=generated_art,
-            art_box=art_box,
+            card_boxes=card_boxes,
             target_dpi=800,
         )
 
@@ -348,28 +364,72 @@ async def get_settings():
         "hf_token": state.hf_token,
         "gemini_api_key": state.gemini_api_key,
         "openai_api_key": state.openai_api_key,
+        "xai_api_key": state.xai_api_key,
         "has_hf_token": bool(state.hf_token),
         "has_gemini_key": bool(state.gemini_api_key),
         "has_openai_key": bool(state.openai_api_key),
+        "has_xai_key": bool(state.xai_api_key),
     }
 
 
 @app.post("/api/settings")
 async def update_settings(settings: SettingsModel):
-    """Update generative art settings and API keys."""
+    """Update generative art settings and API keys and persist them in .env."""
     state.provider = settings.provider
+    os.environ["GENERATOR_PROVIDER"] = settings.provider
+
+    # Ensure .env file exists
+    if not ENV_FILE.exists():
+        ENV_FILE.touch()
+
+    try:
+        set_key(str(ENV_FILE), "GENERATOR_PROVIDER", settings.provider)
+    except Exception as e:
+        print(f"[Settings] Warning: Failed to persist GENERATOR_PROVIDER to .env: {e}")
+
     if settings.hf_token is not None:
         state.hf_token = settings.hf_token.strip()
+        os.environ["HF_TOKEN"] = state.hf_token
+        if state.hf_token:
+            try:
+                set_key(str(ENV_FILE), "HF_TOKEN", state.hf_token)
+            except Exception:
+                pass
+
     if settings.gemini_api_key is not None:
         state.gemini_api_key = settings.gemini_api_key.strip()
+        os.environ["GEMINI_API_KEY"] = state.gemini_api_key
+        if state.gemini_api_key:
+            try:
+                set_key(str(ENV_FILE), "GEMINI_API_KEY", state.gemini_api_key)
+            except Exception:
+                pass
+
     if settings.openai_api_key is not None:
         state.openai_api_key = settings.openai_api_key.strip()
+        os.environ["OPENAI_API_KEY"] = state.openai_api_key
+        if state.openai_api_key:
+            try:
+                set_key(str(ENV_FILE), "OPENAI_API_KEY", state.openai_api_key)
+            except Exception:
+                pass
+
+    if settings.xai_api_key is not None:
+        state.xai_api_key = settings.xai_api_key.strip()
+        os.environ["XAI_API_KEY"] = state.xai_api_key
+        if state.xai_api_key:
+            try:
+                set_key(str(ENV_FILE), "XAI_API_KEY", state.xai_api_key)
+            except Exception:
+                pass
+
     return {
         "status": "updated",
         "provider": state.provider,
         "has_hf_token": bool(state.hf_token),
         "has_gemini_key": bool(state.gemini_api_key),
         "has_openai_key": bool(state.openai_api_key),
+        "has_xai_key": bool(state.xai_api_key),
     }
 
 

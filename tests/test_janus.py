@@ -89,6 +89,9 @@ class TestJanusProGenerator(unittest.IsolatedAsyncioTestCase):
                     target_height=320,
                 )
                 mock_predict.assert_called_once()
+                predict_prompt = mock_predict.call_args[0][0]
+                self.assertNotIn("Phoenix", predict_prompt)
+                self.assertIn("A cosmic phoenix rising from stardust", predict_prompt)
                 self.assertIsInstance(art, Image.Image)
                 self.assertEqual(art.size, (450, 320))
         finally:
