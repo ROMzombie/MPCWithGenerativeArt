@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MPC With Generative Art — Custom Playing Cards</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <header class="navbar">
+    <div class="brand">
+      <span class="brand-icon">🎴</span>
+      <span>MPC With Generative Art</span>
+    </div>
+    <div class="nav-actions">
+      <button class="btn btn-secondary btn-sm" id="btnSettings">
+        ⚙️ Settings
+      </button>
+      <button class="btn btn-done" id="btnDone">
+        ✨ I'm Done
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- Input / Deck Builder Section -->
+    <section class="card-section">
+      <div class="section-header">
+        <h2 class="section-title">📥 Deck File Input & Specification</h2>
+        <button class="btn btn-secondary btn-sm" id="btnSample">
+          📋 Load Sample Deck
+        </button>
+      </div>
+
+      <p class="section-subtitle">
+        Enter lines matching the format below, or drag-and-drop a text file. Each card art will be replaced with custom generative artwork based on your prompt and upscaled to <strong>800 DPI print quality</strong> for MakePlayingCards.
+      </p>
+
+      <div class="code-format-tip">
+        Format: Copies CardName (set) CollectorNumber&lt;TAB&gt;prompt
+      </div>
+
+      <!-- File Dropzone -->
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept=".txt,.deck,.csv" style="display: none;" />
+        <p>📁 Drag and drop your deck <code>.txt</code> file here, or click to browse</p>
+      </div>
+
+      <!-- Textarea with Tab Support -->
+      <div class="editor-wrapper">
+        <textarea
+          id="deckInput"
+          class="deck-textarea"
+          placeholder="1 Byode, Inverse Sun (PH21) 3	An anime girl dressed like a pixie&#10;1 All-Seeing Toby (SLD) 2695	An anime boy in a library holding a book&#10;1 Animate Dead (SLD) 2189	An old man in an anime style holding his hand up with a magic sphere surroundning him"
+        ></textarea>
+      </div>
+
+      <!-- Live Validation Status & Errors -->
+      <div class="validation-bar">
+        <div id="validationStatus">
+          <span style="color: var(--text-muted);">Awaiting deck input...</span>
+        </div>
+        <button class="btn btn-primary" id="btnGenerate" disabled>
+          ✨ Generate Deck (800 DPI)
+        </button>
+      </div>
+
+      <div id="errorContainer" class="error-list" style="display: none;"></div>
+    </section>
+
+    <!-- Card Grid Section -->
+    <section class="card-section" id="gridSection" style="display: none;">
+      <div class="grid-header">
+        <h2 class="section-title">
+          🎨 Generated Cards (800 DPI Print Ready)
+        </h2>
+        <span id="cardCountLabel" style="font-size: 0.9rem; color: var(--text-secondary); font-weight: 600;"></span>
+      </div>
+
+      <div class="cards-grid" id="cardsGrid">
+        <!-- Card items populated dynamically by JS -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- "I'm Done" Modal -->
+  <div class="modal-backdrop" id="doneModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="section-title">🚀 Ready for MakePlayingCards</h3>
+        <button class="close-btn close-modal">&times;</button>
+      </div>
+
+      <div style="background-color: var(--bg-card); padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+          <span style="color: var(--text-secondary);">Total Cards to Print:</span>
+          <strong id="modalTotalCards">0 Cards</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+          <span style="color: var(--text-secondary);">MPC Deck Bracket:</span>
+          <strong id="modalBracket">55 Cards</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: var(--text-secondary);">Print Resolution:</span>
+          <strong style="color: var(--accent-success);">800 DPI (Full Bleed Margin)</strong>
+        </div>
+      </div>
+
+      <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
+        Choose how you would like to proceed with your MakePlayingCards order:
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
+        <button class="btn btn-primary" id="btnStartMpcUpload" style="justify-content: center;">
+          🚀 Upload to MakePlayingCards Order
+        </button>
+
+        <a href="/api/export/zip" download="MPC_GenerativeArt_Deck.zip" class="btn btn-secondary" style="justify-content: center;">
+          📦 Download MPCFill Package (.zip + cards.xml)
+        </a>
+
+        <a href="/api/export/xml" download="cards.xml" class="btn btn-secondary btn-sm" style="justify-content: center;">
+          📄 Download cards.xml Only
+        </a>
+      </div>
+
+      <div class="log-terminal" id="mpcLogTerminal">Automation log output will appear here...</div>
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
+        <button class="btn btn-secondary btn-sm close-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="section-title">⚙️ Generative Art & Engine Settings</h3>
+        <button class="close-btn close-modal">&times;</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
+            Generative Art Provider:
+          </label>
+          <select id="providerSelect" style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);">
+            <option value="janus" selected>🌌 DeepSeek Janus-Pro-7B (Hugging Face Space)</option>
+            <option value="perchance">🔮 Perchance AI Art Generator (Free / Zero-Config)</option>
+            <option value="mock">🎨 Algorithmic Procedural Generator (Zero-Config / Built-in)</option>
+            <option value="gemini">✨ Google Gemini / Imagen 3</option>
+            <option value="openai">🤖 OpenAI DALL-E 3</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
+            Hugging Face Access Token (Optional, for ZeroGPU Priority):
+          </label>
+          <input type="password" id="hfToken" placeholder="Enter HF_TOKEN (e.g. hf_...)..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
+            Google Gemini API Key (Optional):
+          </label>
+          <input type="password" id="geminiApiKey" placeholder="Enter GEMINI_API_KEY..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
+            OpenAI API Key (Optional):
+          </label>
+          <input type="password" id="openaiApiKey" placeholder="Enter OPENAI_API_KEY..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
+        </div>
+
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+        <button class="btn btn-secondary btn-sm close-modal">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="btnSaveSettings">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lightbox Modal -->
+  <div class="modal-backdrop" id="lightboxModal">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem; position: relative;">
+      <button class="close-btn close-modal" style="position: absolute; top: -40px; right: 0; font-size: 2rem; color: #fff;">&times;</button>
+      <img id="lightboxImage" class="lightbox-img" src="" alt="800 DPI Card Preview" />
+      <div id="lightboxCaption" style="font-size: 0.95rem; font-weight: 600; color: #e2e8f0; background: rgba(0,0,0,0.6); padding: 0.4rem 1rem; border-radius: 9999px;"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
