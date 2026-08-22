@@ -555,6 +555,15 @@ if frontend_dir.exists():
     app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def serve_favicon():
+    """Serves the favicon.ico asset."""
+    favicon_path = Path("frontend/favicon.ico")
+    if favicon_path.exists():
+        return FileResponse(str(favicon_path), media_type="image/x-icon")
+    return Response(status_code=404)
+
+
 @app.get("/")
 async def serve_index():
     """Serves the main frontend Single Page Application with cache-control headers."""

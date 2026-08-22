@@ -14,6 +14,12 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("MPC With Generative Art", resp.text)
 
+    def test_favicon_endpoint(self):
+        resp = client.get("/favicon.ico")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers.get("content-type"), "image/x-icon")
+        self.assertGreater(len(resp.content), 0)
+
     def test_parse_valid_deck(self):
         payload = {
             "text": "1 Byode, Inverse Sun (PH21) 3\tAn anime girl dressed like a pixie\n1 All-Seeing Toby (SLD) 2695\tAn anime boy in a library"
