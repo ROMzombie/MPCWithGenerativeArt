@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MPC With Generative Art — Custom Playing Cards</title>
-  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="/static/css/style.css?v=4" />
 </head>
 <body>
 
@@ -111,25 +111,68 @@
         </div>
       </div>
 
-      <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
-        Choose how you would like to proceed with your MakePlayingCards order:
-      </p>
+      <!-- In-Browser Session Injector -->
+      <div class="injector-card">
+        <div class="injector-title">
+          <span>⚡</span>
+          <span>1-Click Direct In-Browser Injector (Recommended)</span>
+        </div>
+        <p class="injector-subtitle">
+          Uploads all generated 800 DPI cards and <strong>automatically adds them to the next open spaces in your MakePlayingCards order</strong>:
+        </p>
 
-      <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
-        <button class="btn btn-primary" id="btnStartMpcUpload" style="justify-content: center;">
-          🚀 Upload to MakePlayingCards Order
-        </button>
+        <div class="injector-steps">
+          <div class="injector-step">
+            <span class="injector-step-num">1</span>
+            <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+              <span>Start the editor on MakePlayingCards:</span>
+              <div>
+                <a href="https://www.makeplayingcards.com/design/custom-blank-card.html" target="_blank" class="btn btn-primary btn-sm" id="btnOpenMpcDesigner" style="display: inline-flex; font-size: 0.85rem; padding: 0.4rem 0.9rem;">
+                  🔗 Open MakePlayingCards Card Designer (New Tab)
+                </a>
+              </div>
+            </div>
+          </div>
+          <div class="injector-step" style="margin-top: 0.4rem;">
+            <span class="injector-step-num">2</span>
+            <span>On your MPC tab, click the bookmarklet below or paste the Console snippet:</span>
+          </div>
+        </div>
 
-        <a href="/api/export/zip" download="MPC_GenerativeArt_Deck.zip" class="btn btn-secondary" style="justify-content: center;">
-          📦 Download MPCFill Package (.zip + cards.xml)
-        </a>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
+          <a id="mpcBookmarklet" href="#" class="bookmarklet-btn" title="Drag this button to your browser Bookmarks Bar">
+            🎴 Send Deck to MPC
+          </a>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">(Drag to Bookmarks Bar, then click on MPC tab)</span>
+        </div>
 
-        <a href="/api/export/xml" download="cards.xml" class="btn btn-secondary btn-sm" style="justify-content: center;">
-          📄 Download cards.xml Only
-        </a>
+        <div class="snippet-wrapper">
+          <code class="snippet-code" id="snippetCode">fetch('http://localhost:8000/api/mpc/injector.js').then(r=>r.text()).then(eval)</code>
+          <button class="copy-btn" id="btnCopySnippet">📋 Copy Snippet</button>
+        </div>
       </div>
 
-      <div class="log-terminal" id="mpcLogTerminal">Automation log output will appear here...</div>
+      <div style="border-top: 1px solid var(--border-color); padding-top: 1rem; margin-bottom: 1rem;">
+        <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-primary);">
+          📦 Alternative Export & Automation Options:
+        </h4>
+
+        <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
+          <a href="/api/export/zip" download="MPC_GenerativeArt_Deck.zip" class="btn btn-secondary" style="justify-content: center;">
+            📦 Download MPCFill Package (.zip + cards.xml)
+          </a>
+
+          <a href="/api/export/xml" download="cards.xml" class="btn btn-secondary btn-sm" style="justify-content: center;">
+            📄 Download cards.xml Only
+          </a>
+
+          <button class="btn btn-secondary btn-sm" id="btnStartMpcUpload" style="justify-content: center;">
+            🤖 Run Standalone Playwright Automation
+          </button>
+        </div>
+
+        <div class="log-terminal" id="mpcLogTerminal" style="display: none;">Automation log output will appear here...</div>
+      </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
         <button class="btn btn-secondary btn-sm close-modal">Close</button>
@@ -206,6 +249,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=4"></script>
 </body>
 </html>

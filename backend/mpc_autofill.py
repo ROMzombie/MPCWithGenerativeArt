@@ -127,7 +127,7 @@ class MPCBrowserUploader:
         bracket = calculate_mpc_bracket(total_cards)
 
         yield f"🚀 Initializing MakePlayingCards automation for {total_cards} cards (Bracket: {bracket})..."
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.3)
 
         # Verify all files exist
         valid_files = 0
@@ -137,41 +137,58 @@ class MPCBrowserUploader:
                 valid_files += 1
 
         yield f"📦 Verified {valid_files}/{len(cards)} card assets ready at 800 DPI print quality."
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.3)
+
+        queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def sync_worker():
+            try:
+                from playwright.sync_api import sync_playwright
+                loop.call_soon_threadsafe(queue.put_nowait, "🌐 Launching automated browser session...")
+                with sync_playwright() as p:
+                    # Launch visible browser
+                    browser = p.chromium.launch(headless=False, args=["--start-maximized"])
+                    context = browser.new_context(viewport=None)
+                    page = context.new_page()
+
+                    loop.call_soon_threadsafe(queue.put_nowait, "🔗 Navigating to MakePlayingCards custom card creator...")
+                    page.goto("https://www.makeplayingcards.com/design/custom-blank-card.html", timeout=45000)
+                    page.wait_for_timeout(2000)
+
+                    loop.call_soon_threadsafe(queue.put_nowait, f"ℹ️ Selecting deck bracket ({bracket} cards)...")
+                    try:
+                        page.select_option("#dro_choosesize", str(bracket))
+                    except Exception:
+                        pass
+
+                    loop.call_soon_threadsafe(queue.put_nowait, "✨ Advancing to MakePlayingCards Card Designer...")
+                    try:
+                        page.evaluate("() => doPersonalize('https://www.makeplayingcards.com/products/pro_item_process_flow.aspx')")
+                        page.wait_for_timeout(3000)
+                    except Exception:
+                        pass
+
+                    loop.call_soon_threadsafe(queue.put_nowait, "✅ Browser session ready!")
+                    loop.call_soon_threadsafe(queue.put_nowait, "💡 Pro-Tip: You can also use the 1-Click Bookmarklet to inject cards directly into your logged-in browser tab!")
+                    page.wait_for_timeout(3000)
+
+            except Exception as e:
+                loop.call_soon_threadsafe(queue.put_nowait, f"⚠️ Browser automation notice: {e}")
+                loop.call_soon_threadsafe(queue.put_nowait, "💡 Pro-Tip: Use the 1-Click In-Browser Injector or download the MPCFill zip package.")
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        import threading
+        thread = threading.Thread(target=sync_worker, daemon=True)
+        thread.start()
 
         try:
-            from playwright.async_api import async_playwright
-            yield "🌐 Launching automated browser session..."
-
-            async with async_playwright() as p:
-                # Launch browser (headful if user wants to interact, or headless)
-                browser = await p.chromium.launch(headless=False, args=["--start-maximized"])
-                context = await browser.new_context(viewport=None)
-                page = await context.new_page()
-
-                yield "🔗 Navigating to MakePlayingCards custom card creator..."
-                await page.goto("https://www.makeplayingcards.com/design/custom-blank-card.html", timeout=30000)
-                await asyncio.sleep(2.0)
-
-                yield f"ℹ️ Checking active MakePlayingCards session and bracket settings ({bracket} cards)..."
-                await asyncio.sleep(1.0)
-
-                current_slot = 0
-                for idx, card in enumerate(cards, start=1):
-                    img_path = card_image_paths.get(card.id)
-                    for copy_num in range(card.copies):
-                        current_slot += 1
-                        yield f"⬆️ Uploading Slot #{current_slot}/{total_cards}: {card.card_name} (Copy {copy_num+1}/{card.copies})..."
-                        await asyncio.sleep(0.4)
-
-                yield "✅ All cards successfully placed in the MakePlayingCards designer!"
-                yield "🎉 Order ready for review in the open browser window."
-                await asyncio.sleep(2.0)
-
-        except Exception as e:
-            yield f"⚠️ Direct browser launch notice: {e}"
-            yield "💡 Pro-Tip: You can also click 'Download MPCFill Package (.zip)' to run with mpc-autofill desktop client!"
-
+            while True:
+                msg = await queue.get()
+                if msg is None:
+                    break
+                yield msg
         finally:
             self.is_running = False
             yield "🏁 Finished MPC upload process."

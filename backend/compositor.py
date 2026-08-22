@@ -15,6 +15,73 @@ THUMB_DIR.mkdir(parents=True, exist_ok=True)
 MPC_800DPI_WIDTH = 2184
 MPC_800DPI_HEIGHT = 2968
 
+# Default bleed scale factor for Scryfall card frame assets.
+# Scaling by 0.90 provides ~5% bleed margin on all four sides, ensuring that
+# the 1/8" MPC cut area and safe zone contain only full-bleed generative art,
+# with all card frame elements (title bar, type line, rules box, badges) comfortably inside.
+MPC_BLEED_SCALE = 0.90
+
+
+def scale_card_frame_and_boxes(
+    card_frame_img: Image.Image,
+    card_boxes: Dict[str, Any],
+    scale_factor: float = MPC_BLEED_SCALE,
+    target_canvas_size: Optional[Tuple[int, int]] = None,
+) -> Tuple[Image.Image, Dict[str, Any]]:
+    """
+    Scales the Scryfall card frame down by scale_factor and centers it on a transparent
+    canvas of target_canvas_size (defaulting to the original card size).
+    Transforms all bounding boxes and polygon coordinate arrays accordingly.
+    """
+    cw, ch = card_frame_img.size
+    canvas_w, canvas_h = target_canvas_size if target_canvas_size else (cw, ch)
+
+    if scale_factor >= 1.0:
+        return card_frame_img.convert("RGBA"), card_boxes
+
+    sw = int(cw * scale_factor)
+    sh = int(ch * scale_factor)
+    ox = (canvas_w - sw) // 2
+    oy = (canvas_h - sh) // 2
+
+    scaled_card = card_frame_img.resize((sw, sh), Image.Resampling.LANCZOS)
+    padded_card = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    padded_card.paste(scaled_card.convert("RGBA"), (ox, oy))
+
+    def scale_box(b: Optional[Tuple[int, int, int, int]]) -> Optional[Tuple[int, int, int, int]]:
+        if not b:
+            return None
+        return (
+            int(b[0] * scale_factor + ox),
+            int(b[1] * scale_factor + oy),
+            int(b[2] * scale_factor + ox),
+            int(b[3] * scale_factor + oy),
+        )
+
+    def scale_poly(poly: Optional[List[Tuple[int, int]]]) -> Optional[List[Tuple[int, int]]]:
+        if not poly:
+            return None
+        return [
+            (int(x * scale_factor + ox), int(y * scale_factor + oy))
+            for (x, y) in poly
+        ]
+
+    scaled_boxes = {
+        "art_box": scale_box(card_boxes.get("art_box")),
+        "rules_box": scale_box(card_boxes.get("rules_box")),
+        "stat_box": scale_box(card_boxes.get("stat_box")),
+        "stat_polygon": scale_poly(card_boxes.get("stat_polygon")),
+        "title_box": scale_box(card_boxes.get("title_box")),
+        "title_pill": scale_box(card_boxes.get("title_pill")),
+        "subtitle_polygon": scale_poly(card_boxes.get("subtitle_polygon")),
+        "type_box": scale_box(card_boxes.get("type_box")),
+        "is_borderless": card_boxes.get("is_borderless", False),
+        "scale_factor": scale_factor,
+        "offset": (ox, oy),
+    }
+
+    return padded_card, scaled_boxes
+
 
 def detect_art_box(card_img: Image.Image, art_crop_img: Optional[Image.Image] = None) -> Tuple[int, int, int, int]:
     """
@@ -121,23 +188,22 @@ def detect_card_boxes(
     )
     has_flavor_name = bool(flavor_name)
 
-    # 2. Title Box Detection (preserving full title + subtitle banner if present)
-    if is_borderless:
-        if has_flavor_name:
-            title_box = (int(36 * sx), int(36 * sy), int(708 * sx), int(144 * sy))
-        else:
-            title_box = (int(36 * sx), int(36 * sy), int(708 * sx), int(114 * sy))
+    # 2. Title Box Detection (exact pill + subtitle polygon if present)
+    title_pill = (int(40 * sx), int(44 * sy), int(705 * sx), int(96 * sy))
+    subtitle_polygon = None
+    if has_flavor_name:
+        subtitle_polygon = [
+            (int(85 * sx), int(94 * sy)),
+            (int(660 * sx), int(94 * sy)),
+            (int(636 * sx), int(138 * sy)),
+            (int(109 * sx), int(138 * sy)),
+        ]
+        title_box = (int(40 * sx), int(44 * sy), int(705 * sx), int(138 * sy))
     else:
-        if has_flavor_name:
-            title_box = (int(42 * sx), int(36 * sy), int(703 * sx), int(136 * sy))
-        else:
-            title_box = (int(42 * sx), int(36 * sy), int(703 * sx), int(90 * sy))
+        title_box = title_pill
 
     # 3. Type Line Box Detection
-    if is_borderless:
-        type_box = (int(38 * sx), int(574 * sy), int(706 * sx), int(626 * sy))
-    else:
-        type_box = (int(42 * sx), int(582 * sy), int(703 * sx), int(640 * sy))
+    type_box = (int(40 * sx), int(578 * sy), int(705 * sx), int(628 * sy))
 
     # 4. Statistic Box & Rules Text Box Detection
     stat_box = None
@@ -145,7 +211,7 @@ def detect_card_boxes(
 
     if is_planeswalker:
         # Planeswalker / Universewalker layout
-        rules_box = (int(42 * sx), int(644 * sy), int(703 * sx), int(948 * sy))
+        rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
         # Irregular polygonal loyalty shield badge (notched top, vertical sides, chevron pointed tip)
         stat_polygon = [
             (int(604 * sx), int(928 * sy)),
@@ -161,19 +227,19 @@ def detect_card_boxes(
     elif is_creature:
         # Creature / Vehicle layout with Power & Toughness box
         if is_borderless:
-            rules_box = (int(44 * sx), int(618 * sy), int(700 * sx), int(932 * sy))
-            stat_box = (int(570 * sx), int(915 * sy), int(706 * sx), int(968 * sy))
+            rules_box = (int(46 * sx), int(626 * sy), int(699 * sx), int(934 * sy))
+            stat_box = (int(574 * sx), int(918 * sy), int(705 * sx), int(984 * sy))
         else:
             rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(930 * sy))
-            stat_box = (int(560 * sx), int(884 * sy), int(700 * sx), int(960 * sy))
+            stat_box = (int(574 * sx), int(918 * sy), int(705 * sx), int(984 * sy))
     elif is_battle:
         # Battle layout with Defense box
         rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(930 * sy))
-        stat_box = (int(565 * sx), int(884 * sy), int(700 * sx), int(960 * sy))
+        stat_box = (int(574 * sx), int(918 * sy), int(705 * sx), int(984 * sy))
     else:
         # Standard non-creature layout (Enchantment, Instant, Sorcery, Artifact, Land)
         if is_borderless:
-            rules_box = (int(44 * sx), int(618 * sy), int(700 * sx), int(942 * sy))
+            rules_box = (int(46 * sx), int(626 * sy), int(699 * sx), int(942 * sy))
         else:
             rules_box = (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
 
@@ -183,6 +249,8 @@ def detect_card_boxes(
         "stat_box": stat_box,
         "stat_polygon": stat_polygon,
         "title_box": title_box,
+        "title_pill": title_pill,
+        "subtitle_polygon": subtitle_polygon,
         "type_box": type_box,
         "is_borderless": is_borderless,
     }
@@ -191,39 +259,51 @@ def detect_card_boxes(
 def create_card_exclusion_mask(
     card_img: Image.Image,
     card_boxes: Dict[str, Any],
-    feather_radius: float = 0.5,
+    card_scale: float = 1.0,
+    feather_radius: float = 0.3,
 ) -> Image.Image:
     """
     Constructs an alpha mask that excludes (preserves) the card rules text box,
     statistic text box/polygons (such as Planeswalker loyalty shields), title bar, and type line
-    with smooth beveled corners.
+    with smooth beveled corners. Supports optional card scaling.
     """
     cw, ch = card_img.size
     sx = cw / 745.0
     sy = ch / 1040.0
+
+    if card_scale < 1.0:
+        _, boxes = scale_card_frame_and_boxes(card_img, card_boxes, scale_factor=card_scale)
+        s_eff = card_scale
+    else:
+        boxes = card_boxes
+        s_eff = 1.0
+
     mask = Image.new("L", (cw, ch), 0)
     draw = ImageDraw.Draw(mask)
 
-    # 1. Preserve Title Header (Card name, mana cost, and subtitle)
-    tb = card_boxes.get("title_box") or (int(44 * sx), int(38 * sy), int(701 * sx), int(88 * sy))
-    draw.rounded_rectangle([tb[0], tb[1], tb[2], tb[3]], radius=max(4, int(14 * sx)), fill=255)
+    # 1. Preserve Title Header
+    t_pill = boxes.get("title_pill") or (int(40 * sx), int(44 * sy), int(705 * sx), int(96 * sy))
+    draw.rounded_rectangle(t_pill, radius=max(4, int(24 * sy * s_eff)), fill=255)
+    sub_poly = boxes.get("subtitle_polygon")
+    if sub_poly:
+        draw.polygon(sub_poly, fill=255)
 
     # 2. Preserve Type Line
-    typ = card_boxes.get("type_box") or (int(44 * sx), int(584 * sy), int(701 * sx), int(638 * sy))
-    draw.rounded_rectangle([typ[0], typ[1], typ[2], typ[3]], radius=max(4, int(14 * sx)), fill=255)
+    typ = boxes.get("type_box") or (int(40 * sx), int(578 * sy), int(705 * sx), int(628 * sy))
+    draw.rounded_rectangle([typ[0], typ[1], typ[2], typ[3]], radius=max(4, int(24 * sy * s_eff)), fill=255)
 
     # 3. Preserve Rules Text Box
-    rb = card_boxes.get("rules_box") or (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
-    draw.rounded_rectangle([rb[0], rb[1], rb[2], rb[3]], radius=max(6, int(14 * sx)), fill=255)
+    rb = boxes.get("rules_box") or (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
+    draw.rounded_rectangle([rb[0], rb[1], rb[2], rb[3]], radius=max(4, int(10 * sx * s_eff)), fill=255)
 
     # 4. Preserve Statistic Text Box / Polygonal Shield if present
-    stat_poly = card_boxes.get("stat_polygon")
+    stat_poly = boxes.get("stat_polygon")
     if stat_poly:
         draw.polygon(stat_poly, fill=255)
     else:
-        sb = card_boxes.get("stat_box")
+        sb = boxes.get("stat_box")
         if sb:
-            draw.rounded_rectangle([sb[0], sb[1], sb[2], sb[3]], radius=max(4, int(12 * sx)), fill=255)
+            draw.rounded_rectangle([sb[0], sb[1], sb[2], sb[3]], radius=max(4, int(22 * sy * s_eff)), fill=255)
 
     # Apply slight feathering for clean seamless integration
     if feather_radius > 0:
@@ -236,21 +316,29 @@ def composite_full_art_card(
     card_frame_img: Image.Image,
     generated_art_img: Image.Image,
     card_boxes: Dict[str, Any],
+    card_scale: float = MPC_BLEED_SCALE,
     target_dpi: int = 800,
     target_width: int = MPC_800DPI_WIDTH,
     target_height: int = MPC_800DPI_HEIGHT,
 ) -> Image.Image:
     """
     Composites a full-art background image with individually masked card rules and statistic text boxes,
-    upscales to 800 DPI print dimensions, and embeds print resolution.
-    For borderless/translucent text boxes, renders clean dark backdrops and isolates text/icons.
+    scaling the Scryfall card frame down slightly to ensure the 1/8" MPC bleed margin contains purely
+    generative art. Upscales seamlessly to 800 DPI target print dimensions.
     """
-    card_rgba = card_frame_img.convert("RGBA")
-    cw, ch = card_rgba.size
+    cw, ch = card_frame_img.size
     sx = cw / 745.0
     sy = ch / 1040.0
 
-    # Fit full-art generated image preserving aspect ratio centered on the art frame
+    if card_scale < 1.0:
+        card_rgba, boxes = scale_card_frame_and_boxes(card_frame_img, card_boxes, scale_factor=card_scale)
+        s_eff = card_scale
+    else:
+        card_rgba = card_frame_img.convert("RGBA")
+        boxes = card_boxes
+        s_eff = 1.0
+
+    # Fit full-art generated image across the entire canvas preserving aspect ratio
     art_full = ImageOps.fit(
         generated_art_img.convert("RGBA"),
         (cw, ch),
@@ -259,88 +347,96 @@ def composite_full_art_card(
     )
 
     composite = art_full.copy()
-    is_borderless = card_boxes.get("is_borderless", False)
+    is_borderless = boxes.get("is_borderless", False)
 
-    # 1. Composite Title Header
-    tb = card_boxes.get("title_box") or (int(42 * sx), int(36 * sy), int(703 * sx), int(90 * sy))
+    # 1. Composite Title Header (Pill + Subtitle Polygon if present)
+    t_pill = boxes.get("title_pill") or (int(40 * sx), int(44 * sy), int(705 * sx), int(96 * sy))
     t_mask = Image.new("L", (cw, ch), 0)
     td = ImageDraw.Draw(t_mask)
-    td.rounded_rectangle(tb, radius=max(4, int(14 * sx)), fill=255)
-    t_mask = t_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+    td.rounded_rectangle(t_pill, radius=max(4, int(24 * sy * s_eff)), fill=255)
+    sub_poly = boxes.get("subtitle_polygon")
+    if sub_poly:
+        td.polygon(sub_poly, fill=255)
+    t_mask = t_mask.filter(ImageFilter.GaussianBlur(radius=0.3))
     composite.paste(card_rgba, (0, 0), t_mask)
 
     # 2. Composite Type Line Box
-    typ = card_boxes.get("type_box") or (int(42 * sx), int(582 * sy), int(703 * sx), int(640 * sy))
+    typ = boxes.get("type_box") or (int(40 * sx), int(578 * sy), int(705 * sx), int(628 * sy))
     typ_mask = Image.new("L", (cw, ch), 0)
     typd = ImageDraw.Draw(typ_mask)
-    typd.rounded_rectangle(typ, radius=max(4, int(14 * sx)), fill=255)
-    typ_mask = typ_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+    typd.rounded_rectangle(typ, radius=max(4, int(24 * sy * s_eff)), fill=255)
+    typ_mask = typ_mask.filter(ImageFilter.GaussianBlur(radius=0.3))
     composite.paste(card_rgba, (0, 0), typ_mask)
 
     # 3. Composite Rules Text Box
-    rb = card_boxes.get("rules_box") or (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
+    rb = boxes.get("rules_box") or (int(46 * sx), int(646 * sy), int(699 * sx), int(940 * sy))
+    sb = boxes.get("stat_box")
+    stat_poly = boxes.get("stat_polygon")
+
     if is_borderless:
         # For borderless/translucent cards:
         # Draw clean dark tinted backing to eliminate old art from the text box
-        draw_comp = ImageDraw.Draw(composite)
-        draw_comp.rounded_rectangle(rb, radius=max(6, int(14 * sx)), fill=(16, 18, 22, 230))
+        cdraw = ImageDraw.Draw(composite)
+        if sb and not stat_poly:
+            # Notched backing for creature cards to seamlessly meet the P/T box
+            notch_offset = int(6 * sy * s_eff)
+            rb_poly = [
+                (rb[0], rb[1]),
+                (rb[2], rb[1]),
+                (rb[2], sb[1] + notch_offset),
+                (sb[0], sb[1] + notch_offset),
+                (sb[0], rb[3]),
+                (rb[0], rb[3]),
+            ]
+            cdraw.polygon(rb_poly, fill=(16, 18, 22, 235))
+            cdraw.line([
+                (rb[0], rb[3]),
+                (rb[0], rb[1]),
+                (rb[2], rb[1]),
+                (rb[2], sb[1] + notch_offset),
+            ], fill=(60, 65, 75, 255), width=2)
+            cdraw.line([
+                (rb[0], rb[3]),
+                (sb[0], rb[3]),
+            ], fill=(60, 65, 75, 255), width=2)
+        else:
+            cdraw.rounded_rectangle(rb, radius=max(4, int(10 * sx * s_eff)), fill=(16, 18, 22, 235), outline=(60, 65, 75, 255), width=2)
 
         # Crop rules box region from card
         rules_crop = card_rgba.crop(rb)
         gray = rules_crop.convert("L")
         # Extract text / symbols / border (bright pixels & high contrast)
-        text_mask = gray.point(lambda p: 255 if p > 130 else int(max(0, (p - 70) * 4.25)))
-
-        # Preserve border frame of rules box
-        border_mask = Image.new("L", rules_crop.size, 0)
-        bd = ImageDraw.Draw(border_mask)
-        bd.rounded_rectangle(
-            [0, 0, rules_crop.width - 1, rules_crop.height - 1],
-            radius=max(6, int(14 * sx)),
-            outline=255,
-            width=3,
-        )
-
-        rules_mask = ImageChops.lighter(text_mask, border_mask)
-        composite.paste(rules_crop, (rb[0], rb[1]), rules_mask)
+        text_mask = gray.point(lambda p: 255 if p > 130 else int(max(0, (p - 75) * 4.5)))
+        composite.paste(rules_crop, (rb[0], rb[1]), text_mask)
     else:
         # Standard opaque rules box
         rb_mask = Image.new("L", (cw, ch), 0)
         rbd = ImageDraw.Draw(rb_mask)
-        rbd.rounded_rectangle(rb, radius=max(6, int(14 * sx)), fill=255)
-        rb_mask = rb_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+        rbd.rounded_rectangle(rb, radius=max(4, int(10 * sx * s_eff)), fill=255)
+        rb_mask = rb_mask.filter(ImageFilter.GaussianBlur(radius=0.3))
         composite.paste(card_rgba, (0, 0), rb_mask)
 
     # 4. Composite Statistic Box (Power/Toughness, Loyalty Shield, or Defense Badge)
-    stat_poly = card_boxes.get("stat_polygon")
     if stat_poly:
         sp_mask = Image.new("L", (cw, ch), 0)
         spd = ImageDraw.Draw(sp_mask)
         spd.polygon(stat_poly, fill=255)
-        sp_mask = sp_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+        sp_mask = sp_mask.filter(ImageFilter.GaussianBlur(radius=0.3))
         composite.paste(card_rgba, (0, 0), sp_mask)
-    elif card_boxes.get("stat_box"):
-        sb = card_boxes["stat_box"]
+    elif sb:
         sb_mask = Image.new("L", (cw, ch), 0)
         sbd = ImageDraw.Draw(sb_mask)
-        sbd.rounded_rectangle(sb, radius=max(4, int(12 * sx)), fill=255)
-        sb_mask = sb_mask.filter(ImageFilter.GaussianBlur(radius=0.5))
+        sbd.rounded_rectangle(sb, radius=max(4, int(26 * sy * s_eff)), fill=255)
+        sb_mask = sb_mask.filter(ImageFilter.GaussianBlur(radius=0.3))
         composite.paste(card_rgba, (0, 0), sb_mask)
 
-    # Upscale composite card to 800 DPI target MPC dimensions
-    scale_factor = min(target_width / cw, target_height / ch)
-    scaled_w = int(cw * scale_factor)
-    scaled_h = int(ch * scale_factor)
-
-    scaled_card = composite.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
-
-    # Create full canvas with MPC bleed border
-    final_canvas = Image.new("RGB", (target_width, target_height), (12, 12, 12))
-
-    # Center scaled card on bleed canvas
-    offset_x = (target_width - scaled_w) // 2
-    offset_y = (target_height - scaled_h) // 2
-    final_canvas.paste(scaled_card.convert("RGB"), (offset_x, offset_y))
+    # Upscale composite to 800 DPI target MPC dimensions without black letterboxing bars
+    final_canvas = ImageOps.fit(
+        composite.convert("RGB"),
+        (target_width, target_height),
+        method=Image.Resampling.LANCZOS,
+        centering=(0.5, 0.5),
+    )
 
     return final_canvas
 
@@ -350,13 +446,14 @@ def composite_card(
     generated_art_img: Image.Image,
     art_box: Optional[Union[Tuple[int, int, int, int], Dict[str, Any]]] = None,
     card_boxes: Optional[Dict[str, Any]] = None,
+    card_scale: float = MPC_BLEED_SCALE,
     target_dpi: int = 800,
     target_width: int = MPC_800DPI_WIDTH,
     target_height: int = MPC_800DPI_HEIGHT,
 ) -> Image.Image:
     """
     Unified card compositor that performs full-art background placement
-    with card rules and statistic text box exclusion masking.
+    with card rules and statistic text box exclusion masking and MPC bleed margin scaling.
     """
     # If card_boxes is provided or passed via art_box dict
     if isinstance(art_box, dict):
@@ -373,6 +470,7 @@ def composite_card(
         card_frame_img=card_frame_img,
         generated_art_img=generated_art_img,
         card_boxes=boxes,
+        card_scale=card_scale,
         target_dpi=target_dpi,
         target_width=target_width,
         target_height=target_height,
@@ -392,12 +490,12 @@ def save_card_outputs(
     png_path = OUTPUT_DIR / f"{card_id}.png"
     thumb_path = THUMB_DIR / f"{card_id}.jpg"
 
-    # Save 800 DPI PNG
+    # Save 800 DPI PNG (compress_level=6 gives fast zlib deflation without exhaustive multi-pass filter search)
     final_image.save(
         png_path,
         format="PNG",
         dpi=(target_dpi, target_dpi),
-        optimize=True,
+        compress_level=6,
     )
 
     # Save web thumbnail (e.g. 500px width)

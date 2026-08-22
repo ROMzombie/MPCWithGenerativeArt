@@ -44,8 +44,9 @@ class TestFastAPIEndpoints(unittest.TestCase):
         data = resp.json()
         self.assertTrue(data["valid"])
         self.assertEqual(data["global_prompt"], "in cyberpunk futuristic style")
-        self.assertEqual(data["cards"][0]["prompt"], "in cyberpunk futuristic style Pixie")
-        self.assertEqual(data["cards"][1]["prompt"], "in cyberpunk futuristic style Boy")
+        # Textboxes should receive only the card's specific prompt
+        self.assertEqual(data["cards"][0]["prompt"], "Pixie")
+        self.assertEqual(data["cards"][1]["prompt"], "Boy")
 
     def test_parse_file_with_global_prompt(self):
         file_content = b"# retro synthwave style\n1 Byode, Inverse Sun (PH21) 3\tPixie\n"
@@ -57,7 +58,38 @@ class TestFastAPIEndpoints(unittest.TestCase):
         data = resp.json()
         self.assertTrue(data["valid"])
         self.assertEqual(data["global_prompt"], "retro synthwave style")
-        self.assertEqual(data["cards"][0]["prompt"], "retro synthwave style Pixie")
+        self.assertEqual(data["cards"][0]["prompt"], "Pixie")
+
+    def test_process_card_prepends_global_prompt_to_generator(self):
+        import asyncio
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from backend.app import state, process_single_card, CardItem
+
+        state.global_prompt = "studio ghibli watercolor"
+        state.provider = "mock"
+
+        card = CardItem(
+            id="card_test_global",
+            line_number=1,
+            copies=1,
+            card_name="Byode, Inverse Sun",
+            set_code="PH21",
+            collector_number="3",
+            prompt="An anime girl",
+        )
+
+        with patch("backend.generator.MockProceduralGenerator.generate_art", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = None  # Will fail at composite step or we can mock compositor
+            with patch("backend.compositor.composite_card") as mock_comp, patch("backend.compositor.save_card_outputs") as mock_save:
+                mock_comp.return_value = MagicMock()
+                mock_save.return_value = ("output/cards/card_test_global.png", "output/thumbnails/card_test_global.jpg")
+                asyncio.run(process_single_card(card))
+
+            mock_gen.assert_called_once()
+            called_prompt = mock_gen.call_args.kwargs["prompt"]
+            self.assertEqual(called_prompt, "studio ghibli watercolor An anime girl")
+            # Card object itself preserves clean prompt
+            self.assertEqual(card.prompt, "An anime girl")
 
     def setUp(self):
         import tempfile
@@ -184,6 +216,71 @@ class TestFastAPIEndpoints(unittest.TestCase):
         zip_resp = client.get("/api/export/zip")
         self.assertEqual(zip_resp.status_code, 200)
         self.assertEqual(zip_resp.headers["content-type"], "application/zip")
+
+    def test_provider_concurrency_resolution(self):
+        from backend.app import get_provider_concurrency
+        # API providers should have parallel concurrency
+        self.assertEqual(get_provider_concurrency("gemini"), 4)
+        self.assertEqual(get_provider_concurrency("openai"), 4)
+        self.assertEqual(get_provider_concurrency("grok"), 4)
+        self.assertEqual(get_provider_concurrency("xai"), 4)
+        self.assertEqual(get_provider_concurrency("mock"), 4)
+        self.assertEqual(get_provider_concurrency("procedural"), 4)
+        self.assertEqual(get_provider_concurrency(None), 4)
+
+        # Single-file / browser providers should have concurrency 1
+        self.assertEqual(get_provider_concurrency("perchance"), 1)
+        self.assertEqual(get_provider_concurrency("perchance-ai"), 1)
+        self.assertEqual(get_provider_concurrency("janus"), 1)
+        self.assertEqual(get_provider_concurrency("janus-pro"), 1)
+        self.assertEqual(get_provider_concurrency("janus-pro-7b"), 1)
+        self.assertEqual(get_provider_concurrency("deepseek"), 1)
+
+    def test_generate_endpoint_concurrency(self):
+        # 1. Parse sample deck
+        deck = "1 Byode, Inverse Sun (PH21) 3\tAn anime pixie"
+        client.post("/api/parse", json={"text": deck})
+
+        # 2. Set provider to gemini
+        client.post("/api/settings", json={"provider": "gemini"})
+        
+        # 3. Call generate
+        gen_resp = client.post("/api/generate")
+        self.assertEqual(gen_resp.status_code, 200)
+        gen_data = gen_resp.json()
+        self.assertEqual(gen_data["status"], "started")
+        self.assertEqual(gen_data["concurrency"], 4)
+
+    def test_save_card_outputs_fast_png(self):
+        from backend.compositor import save_card_outputs, MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT
+        from PIL import Image
+
+        test_img = Image.new("RGB", (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT), (20, 30, 40))
+        png_path, thumb_path = save_card_outputs("test_fast_card", test_img, target_dpi=800)
+
+        self.assertTrue(os.path.exists(png_path))
+        self.assertTrue(os.path.exists(thumb_path))
+
+        with Image.open(png_path) as loaded:
+            self.assertEqual(loaded.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
+            dpi = loaded.info.get("dpi")
+            self.assertIsNotNone(dpi)
+            self.assertEqual(round(dpi[0]), 800)
+            self.assertEqual(round(dpi[1]), 800)
+
+        # Cleanup
+        if os.path.exists(png_path):
+            os.remove(png_path)
+        if os.path.exists(thumb_path):
+            os.remove(thumb_path)
+
+    def test_mpc_injector_script_endpoint(self):
+        resp = client.get("/api/mpc/injector.js")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("application/javascript", resp.headers["content-type"])
+        self.assertIn("MPC Art Injector", resp.text)
+        self.assertEqual(resp.headers.get("access-control-allow-origin"), "*")
+
 
 if __name__ == "__main__":
     unittest.main()

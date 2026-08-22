@@ -49,7 +49,15 @@ if ENV_FILE and ENV_FILE.exists():
 from backend.parser import parse_deck_text, CardItem, ParseResult
 from backend.scryfall import scryfall_client
 from backend.generator import get_generator, MockProceduralGenerator
-from backend.compositor import detect_card_boxes, detect_art_box, composite_card, composite_full_art_card, save_card_outputs
+from backend.compositor import (
+    detect_card_boxes,
+    detect_art_box,
+    composite_card,
+    composite_full_art_card,
+    save_card_outputs,
+    MPC_BLEED_SCALE,
+    scale_card_frame_and_boxes,
+)
 from backend.mpc_autofill import generate_mpc_xml, create_mpc_zip_bundle, mpc_uploader
 from PIL import Image
 
@@ -74,6 +82,7 @@ class AppState:
         self.card_image_paths: Dict[str, str] = {}
         self.card_thumb_paths: Dict[str, str] = {}
         self.raw_deck_text: str = ""
+        self.global_prompt: Optional[str] = None
         self.hf_token: str = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN", "")
         self.gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
         self.openai_api_key: str = os.environ.get("OPENAI_API_KEY", "")
@@ -146,6 +155,7 @@ async def api_parse(req: ParseRequest):
     if res.valid:
         state.raw_deck_text = req.text
         state.cards = res.cards
+        state.global_prompt = res.global_prompt
     return res
 
 
@@ -158,6 +168,7 @@ async def api_parse_file(file: UploadFile = File(...)):
     if res.valid:
         state.raw_deck_text = text
         state.cards = res.cards
+        state.global_prompt = res.global_prompt
     return res
 
 
@@ -169,6 +180,7 @@ async def get_cards():
         "total_copies": sum(c.copies for c in state.cards),
         "is_generating": state.is_generating,
         "provider": state.provider,
+        "global_prompt": state.global_prompt,
     }
 
 
@@ -209,14 +221,21 @@ async def process_single_card(card: CardItem):
 
         cw, ch = card_frame_img.size
         art_box = card_boxes.get("art_box") or (0, 0, cw, ch // 2)
-        art_cx = (art_box[0] + art_box[2]) // 2
-        art_cy = (art_box[1] + art_box[3]) // 2
+        scale_ox = int((cw - cw * MPC_BLEED_SCALE) // 2)
+        scale_oy = int((ch - ch * MPC_BLEED_SCALE) // 2)
+        art_cx = int(((art_box[0] + art_box[2]) // 2) * MPC_BLEED_SCALE + scale_ox)
+        art_cy = int(((art_box[1] + art_box[3]) // 2) * MPC_BLEED_SCALE + scale_oy)
 
         # 3. Generate custom full-art background centered on the main art frame
+        effective_prompt = (
+            f"{state.global_prompt} {card.prompt}".strip()
+            if state.global_prompt
+            else card.prompt
+        )
         card.status = "generating"
-        card.status_message = f"Generating full-art card background ({state.provider}): '{card.prompt[:40]}...'"
+        card.status_message = f"Generating full-art card background ({state.provider}): '{(effective_prompt or card.prompt)[:40]}...'"
         state.broadcast_card_update(card)
-        state.broadcast_log(f"Generating full-art background for {card.card_name} with prompt: '{card.prompt}'")
+        state.broadcast_log(f"Generating full-art background for {card.card_name} with prompt: '{effective_prompt}'")
 
         p = state.provider.lower().strip()
         if p in ["grok", "xai", "grok-2", "grok-imagine", "grok-imagine-image", "grok-imagine-image-2.0", "x-ai"]:
@@ -231,7 +250,7 @@ async def process_single_card(card: CardItem):
             generator = get_generator(state.provider)
 
         generated_art = await generator.generate_art(
-            prompt=card.prompt,
+            prompt=effective_prompt,
             card_name=card.card_name,
             target_width=cw,
             target_height=ch,
@@ -250,6 +269,7 @@ async def process_single_card(card: CardItem):
             card_frame_img=card_frame_img,
             generated_art_img=generated_art,
             card_boxes=card_boxes,
+            card_scale=MPC_BLEED_SCALE,
             target_dpi=800,
         )
 
@@ -271,6 +291,21 @@ async def process_single_card(card: CardItem):
         state.broadcast_log(f"❌ Failed to process {card.card_name}: {str(e)}", level="error")
 
 
+def get_provider_concurrency(provider: Optional[str] = None) -> int:
+    """
+    Determines maximum parallel card generation workers based on provider.
+    API-based generators (Gemini, OpenAI, Grok) and local Mock procedural generators
+    can run concurrently (default: 4 parallel workers).
+    Browser-based Perchance and Hugging Face ZeroGPU queues run single-file (concurrency: 1).
+    """
+    if not provider:
+        return 4
+    p = provider.lower().strip()
+    if p in ["perchance", "perchance-ai", "janus", "janus-pro", "janus-pro-7b", "deepseek", "deepseek-ai", "deepseek-ai/janus-pro-7b"]:
+        return 1
+    return 4
+
+
 @app.post("/api/generate")
 async def api_generate_deck():
     """Triggers generation for all cards in the parsed deck list."""
@@ -282,14 +317,21 @@ async def api_generate_deck():
 
     async def run_batch():
         state.is_generating = True
-        state.broadcast_log("Starting batch deck generation...")
-        for card in state.cards:
-            await process_single_card(card)
+        concurrency = get_provider_concurrency(state.provider)
+        state.broadcast_log(f"Starting batch deck generation ({len(state.cards)} cards, concurrency: {concurrency}, provider: {state.provider})...")
+        
+        sem = asyncio.Semaphore(concurrency)
+
+        async def worker(card_item: CardItem):
+            async with sem:
+                await process_single_card(card_item)
+
+        await asyncio.gather(*(worker(c) for c in state.cards))
         state.is_generating = False
         state.broadcast_log("🎉 All deck cards generated and ready for MakePlayingCards!")
 
     asyncio.create_task(run_batch())
-    return {"status": "started", "total_cards": len(state.cards)}
+    return {"status": "started", "total_cards": len(state.cards), "concurrency": get_provider_concurrency(state.provider)}
 
 
 @app.post("/api/cards/{card_id}/regenerate")
@@ -352,6 +394,24 @@ async def get_mpc_zip():
         content=zip_bytes,
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="MPC_GenerativeArt_Deck.zip"'},
+    )
+
+
+@app.get("/api/mpc/injector.js")
+async def get_mpc_injector_script():
+    """Serves the in-browser MakePlayingCards session injector script."""
+    injector_path = Path("frontend/js/mpc_injector.js")
+    if not injector_path.exists():
+        raise HTTPException(status_code=404, detail="Injector script not found.")
+    content = injector_path.read_text(encoding="utf-8")
+    return Response(
+        content=content,
+        media_type="application/javascript",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        },
     )
 
 
@@ -497,8 +557,15 @@ if frontend_dir.exists():
 
 @app.get("/")
 async def serve_index():
-    """Serves the main frontend Single Page Application."""
+    """Serves the main frontend Single Page Application with cache-control headers."""
     index_path = Path("frontend/index.html")
     if index_path.exists():
-        return FileResponse(str(index_path))
+        return FileResponse(
+            str(index_path),
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
     return HTMLResponse("<h1>MPCWithGenerativeArt Frontend is being prepared...</h1>")

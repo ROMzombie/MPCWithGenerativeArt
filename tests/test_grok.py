@@ -132,7 +132,11 @@ class TestGrokGenerator(unittest.IsolatedAsyncioTestCase):
             mock_post.assert_called_once()
             call_kwargs = mock_post.call_args.kwargs
             self.assertEqual(call_kwargs["json"]["aspect_ratio"], "4:3")
-            mock_get.assert_called_once_with("https://api.x.ai/temp_images/test_image.png", timeout=60.0)
+            mock_get.assert_called_once()
+            self.assertEqual(mock_get.call_args[0][0], "https://api.x.ai/temp_images/test_image.png")
+            get_timeout = mock_get.call_args.kwargs.get("timeout")
+            self.assertIsNotNone(get_timeout)
+            self.assertEqual(get_timeout.read, 300.0)
 
             self.assertIsInstance(art, Image.Image)
             self.assertEqual(art.size, (600, 400))
@@ -167,6 +171,72 @@ class TestGrokGenerator(unittest.IsolatedAsyncioTestCase):
             )
             self.assertIsInstance(art, Image.Image)
             self.assertEqual(art.size, (300, 400))
+
+    async def test_fallback_on_read_timeout(self):
+        # Specifically tests the ReadTimeout error encountered during high latency AI image generation
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.side_effect = httpx.ReadTimeout("Read timed out")
+
+            gen = GrokImageGenerator(api_key="valid_xai_key")
+            art = await gen.generate_art(
+                prompt="A celestial dragon in the void",
+                card_name="Void Dragon",
+                target_width=300,
+                target_height=400,
+            )
+            self.assertIsInstance(art, Image.Image)
+            self.assertEqual(art.size, (300, 400))
+
+    def test_generator_timeout_helper_defaults_and_env_overrides(self):
+        from backend.generator import get_generator_timeout
+
+        # 1. Default configuration
+        with patch.dict(os.environ, {}, clear=True):
+            timeout = get_generator_timeout()
+            self.assertEqual(timeout.connect, 60.0)
+            self.assertEqual(timeout.read, 300.0)
+            self.assertEqual(timeout.write, 60.0)
+
+        # 2. Environment variable overrides
+        custom_env = {
+            "GENERATOR_TIMEOUT": "450.0",
+            "GENERATOR_READ_TIMEOUT": "500.0",
+            "GENERATOR_CONNECT_TIMEOUT": "45.0",
+            "GENERATOR_WRITE_TIMEOUT": "45.0",
+        }
+        with patch.dict(os.environ, custom_env, clear=True):
+            timeout = get_generator_timeout()
+            self.assertEqual(timeout.connect, 45.0)
+            self.assertEqual(timeout.read, 500.0)
+            self.assertEqual(timeout.write, 45.0)
+
+    async def test_gemini_and_openai_fallback_on_read_timeout(self):
+        from backend.generator import GeminiImageGenerator, OpenAIImageGenerator
+
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.side_effect = httpx.ReadTimeout("Read timed out")
+
+            # Gemini fallback
+            gemini_gen = GeminiImageGenerator(api_key="valid_gemini_key")
+            art1 = await gemini_gen.generate_art(
+                prompt="Gemini prompt",
+                card_name="Gemini Card",
+                target_width=200,
+                target_height=300,
+            )
+            self.assertIsInstance(art1, Image.Image)
+            self.assertEqual(art1.size, (200, 300))
+
+            # OpenAI fallback
+            openai_gen = OpenAIImageGenerator(api_key="valid_openai_key")
+            art2 = await openai_gen.generate_art(
+                prompt="OpenAI prompt",
+                card_name="OpenAI Card",
+                target_width=200,
+                target_height=300,
+            )
+            self.assertIsInstance(art2, Image.Image)
+            self.assertEqual(art2.size, (200, 300))
 
 
 class TestGrokSettingsAPI(unittest.TestCase):

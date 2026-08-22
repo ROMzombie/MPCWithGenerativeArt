@@ -173,6 +173,20 @@ class MockProceduralGenerator(BaseImageGenerator):
         return img
 
 
+def get_generator_timeout(read_timeout: Optional[float] = None) -> httpx.Timeout:
+    """
+    Returns an httpx.Timeout object configured for AI image generation.
+    Supports overriding via GENERATOR_TIMEOUT, GENERATOR_READ_TIMEOUT,
+    GENERATOR_CONNECT_TIMEOUT, and GENERATOR_WRITE_TIMEOUT environment variables.
+    Defaults to 300.0s (5 minutes) total and read timeout, 60.0s connect/write.
+    """
+    total = float(os.environ.get("GENERATOR_TIMEOUT", "300.0"))
+    read = read_timeout if read_timeout is not None else float(os.environ.get("GENERATOR_READ_TIMEOUT", str(total)))
+    connect = float(os.environ.get("GENERATOR_CONNECT_TIMEOUT", "60.0"))
+    write = float(os.environ.get("GENERATOR_WRITE_TIMEOUT", "60.0"))
+    return httpx.Timeout(total, connect=connect, read=read, write=write)
+
+
 class GeminiImageGenerator(BaseImageGenerator):
     """Generates images using Google Gemini / Imagen 3 API."""
 
@@ -218,19 +232,25 @@ class GeminiImageGenerator(BaseImageGenerator):
             },
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code == 200:
-                data = resp.json()
-                predictions = data.get("predictions", [])
-                if predictions and "bytesBase64Encoded" in predictions[0]:
-                    import base64
-                    img_bytes = base64.b64decode(predictions[0]["bytesBase64Encoded"])
-                    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-                    return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
+        try:
+            timeout_config = get_generator_timeout()
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    predictions = data.get("predictions", [])
+                    if predictions and "bytesBase64Encoded" in predictions[0]:
+                        import base64
+                        img_bytes = base64.b64decode(predictions[0]["bytesBase64Encoded"])
+                        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                        return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
+                else:
+                    print(f"[Gemini Generator] Imagen API request failed (HTTP {resp.status_code}: {resp.text}). Using procedural fallback.")
+        except Exception as e:
+            err_msg = str(e) or repr(e)
+            print(f"[Gemini Generator] Generation failed ({type(e).__name__}: {err_msg}). Using procedural fallback.")
 
         # If API failed, fallback gracefully to procedural mock
-        print(f"[Gemini Generator] Imagen API request failed (HTTP {resp.status_code if 'resp' in locals() else 'unknown'}). Using procedural fallback.")
         return await MockProceduralGenerator().generate_art(
             prompt=prompt,
             card_name=card_name,
@@ -280,15 +300,22 @@ class OpenAIImageGenerator(BaseImageGenerator):
             "response_format": "b64_json",
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code == 200:
-                data = resp.json()
-                b64 = data["data"][0]["b64_json"]
-                import base64
-                img_bytes = base64.b64decode(b64)
-                img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-                return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
+        try:
+            timeout_config = get_generator_timeout()
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    b64 = data["data"][0]["b64_json"]
+                    import base64
+                    img_bytes = base64.b64decode(b64)
+                    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                    return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
+                else:
+                    print(f"[OpenAI Generator] DALL-E API request failed (HTTP {resp.status_code}: {resp.text}). Using procedural fallback.")
+        except Exception as e:
+            err_msg = str(e) or repr(e)
+            print(f"[OpenAI Generator] Generation failed ({type(e).__name__}: {err_msg}). Using procedural fallback.")
 
         return await MockProceduralGenerator().generate_art(
             prompt=prompt,
@@ -351,8 +378,8 @@ class GrokImageGenerator(BaseImageGenerator):
         }
 
         try:
-            # Extended timeout for AI image generation (up to 120s)
-            timeout_config = httpx.Timeout(120.0, connect=30.0, read=120.0, write=30.0)
+            # Extended timeout for AI image generation (up to 300s default, configurable via env)
+            timeout_config = get_generator_timeout()
             async with httpx.AsyncClient(timeout=timeout_config) as client:
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code == 200:
@@ -366,7 +393,7 @@ class GrokImageGenerator(BaseImageGenerator):
                             img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
                             return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
                         elif "url" in item and item["url"]:
-                            img_resp = await client.get(item["url"], timeout=60.0)
+                            img_resp = await client.get(item["url"], timeout=timeout_config)
                             if img_resp.status_code == 200:
                                 img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
                                 return ImageOps.fit(img, (target_width, target_height), centering=(0.5, 0.33), method=Image.Resampling.LANCZOS)
@@ -424,11 +451,11 @@ class PerchanceImageGenerator(BaseImageGenerator):
                 )
                 page = await context.new_page()
                 try:
-                    await page.goto("https://perchance.org/ai-text-to-image-generator", wait_until="load", timeout=45000)
+                    await page.goto("https://perchance.org/ai-text-to-image-generator", wait_until="load", timeout=90000)
 
                     # Locate the dynamic Perchance generator iframe
                     target_frame = None
-                    for _ in range(40):
+                    for _ in range(60):
                         await asyncio.sleep(0.5)
                         for f in page.frames:
                             if f != page.main_frame:
@@ -447,16 +474,16 @@ class PerchanceImageGenerator(BaseImageGenerator):
 
                     full_prompt = f"Full-bleed vertical fantasy digital painting of {prompt}, main subject in upper half, detailed digital painting, vibrant lighting"
 
-                    inp = await target_frame.wait_for_selector("#description-search-input", timeout=15000)
+                    inp = await target_frame.wait_for_selector("#description-search-input", timeout=30000)
                     await inp.fill(full_prompt)
 
                     btn = await target_frame.query_selector("#generate-button")
                     if btn:
                         await btn.click()
 
-                    # Wait for generated image URL to appear
+                    # Wait for generated image URL to appear (up to 120s)
                     new_img_bytes = None
-                    for _ in range(60):
+                    for _ in range(240):
                         await asyncio.sleep(0.5)
                         imgs = await target_frame.query_selector_all("img")
                         for img in imgs:

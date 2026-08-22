@@ -14,11 +14,13 @@ from backend.compositor import (
     detect_card_boxes,
     detect_art_box,
     create_card_exclusion_mask,
+    scale_card_frame_and_boxes,
     composite_full_art_card,
     composite_card,
     save_card_outputs,
     MPC_800DPI_WIDTH,
     MPC_800DPI_HEIGHT,
+    MPC_BLEED_SCALE,
 )
 from backend.mpc_autofill import generate_mpc_xml, create_mpc_zip_bundle, calculate_mpc_bracket
 
@@ -65,13 +67,14 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
         self.assertTrue(res.valid)
         self.assertEqual(res.global_prompt, "in watercolor studio ghibli fantasy anime style")
         self.assertEqual(len(res.cards), 2)
+        # Card prompts must retain only their individual prompts for UI textareas
         self.assertEqual(
             res.cards[0].prompt,
-            "in watercolor studio ghibli fantasy anime style An anime girl dressed like a pixie",
+            "An anime girl dressed like a pixie",
         )
         self.assertEqual(
             res.cards[1].prompt,
-            "in watercolor studio ghibli fantasy anime style An anime boy in a library holding a book",
+            "An anime boy in a library holding a book",
         )
 
     def test_parser_global_prompt_variations(self):
@@ -87,8 +90,8 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
         res = parse_deck_text(deck_text)
         self.assertTrue(res.valid)
         self.assertEqual(res.global_prompt, "vibrant 8k digital art")
-        self.assertEqual(res.cards[0].prompt, "vibrant 8k digital art Pixie")
-        self.assertEqual(res.cards[1].prompt, "vibrant 8k digital art Boy with book")
+        self.assertEqual(res.cards[0].prompt, "Pixie")
+        self.assertEqual(res.cards[1].prompt, "Boy with book")
 
         # Comment on first line with // is not global prompt
         deck_no_global = """// just a regular comment
@@ -279,6 +282,49 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         animate_art = await gen.generate_art("old man with white beard", "Animate Dead", animate_img.width, animate_img.height)
         animate_final = composite_card(animate_img, animate_art, card_boxes=animate_boxes)
         self.assertEqual(animate_final.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
+
+    async def test_scale_card_frame_and_boxes(self):
+        # Test scaling Scryfall card frame and transformed coordinates
+        card_data = await scryfall_client.get_card("ph21", "3", "Byode, Inverse Sun")
+        card_img = Image.open(card_data.cached_png_path).convert("RGB")
+        cw, ch = card_img.size
+        boxes = detect_card_boxes(card_img, type_line=card_data.type_line)
+
+        scaled_img, scaled_boxes = scale_card_frame_and_boxes(card_img, boxes, scale_factor=0.90)
+        self.assertEqual(scaled_img.size, (cw, ch))
+        self.assertEqual(scaled_boxes["scale_factor"], 0.90)
+        
+        ox, oy = scaled_boxes["offset"]
+        self.assertEqual(ox, (cw - int(cw * 0.90)) // 2)
+        self.assertEqual(oy, (ch - int(ch * 0.90)) // 2)
+
+        # Verify title pill is shifted by offset
+        orig_pill = boxes["title_pill"]
+        sc_pill = scaled_boxes["title_pill"]
+        self.assertEqual(sc_pill[0], int(orig_pill[0] * 0.90 + ox))
+        self.assertEqual(sc_pill[1], int(orig_pill[1] * 0.90 + oy))
+
+    async def test_scaled_bleed_compositor_edge_bleed_art(self):
+        # Verify that scaled compositing ensures edge bleed area contains only art and no black padding
+        card_data = await scryfall_client.get_card("ph21", "3", "Byode, Inverse Sun")
+        card_img = Image.open(card_data.cached_png_path).convert("RGB")
+        boxes = detect_card_boxes(card_img, type_line=card_data.type_line)
+
+        gen = MockProceduralGenerator()
+        art = await gen.generate_art("pixie", "Byode, Inverse Sun", card_img.width, card_img.height)
+        
+        final_comp = composite_card(card_img, art, card_boxes=boxes, card_scale=MPC_BLEED_SCALE)
+        self.assertEqual(final_comp.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
+
+        # Check corners and edge pixels to confirm no black bars (12, 12, 12)
+        corners = [
+            final_comp.getpixel((0, 0)),
+            final_comp.getpixel((MPC_800DPI_WIDTH - 1, 0)),
+            final_comp.getpixel((0, MPC_800DPI_HEIGHT - 1)),
+            final_comp.getpixel((MPC_800DPI_WIDTH - 1, MPC_800DPI_HEIGHT - 1)),
+        ]
+        for c in corners:
+            self.assertNotEqual(c, (12, 12, 12))
 
 
 if __name__ == "__main__":

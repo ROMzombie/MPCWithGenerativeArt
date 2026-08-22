@@ -53,7 +53,8 @@ def parse_deck_text(text: str) -> ParseResult:
     Copies CardName (set) CollectorNumber\tprompt
 
     If the first line (or first non-empty line) starts with '#', the following
-    text is treated as a global prompt that is prepended to each card prompt in the file.
+    text is treated as a global prompt returned in ParseResult.global_prompt,
+    while individual CardItem.prompt values retain only card-specific prompts.
 
     Returns a ParseResult with structured CardItems or validation errors.
     """
@@ -100,13 +101,6 @@ def parse_deck_text(text: str) -> ParseResult:
                 errors.append(f"Line {idx}: Missing prompt for card '{card_name}'")
                 continue
 
-            if raw_prompt and global_prompt:
-                prompt = f"{global_prompt} {raw_prompt}"
-            elif raw_prompt:
-                prompt = raw_prompt
-            else:
-                prompt = global_prompt
-
             card_id = f"card_{idx}_{set_code}_{collector_number}".lower()
             cards.append(
                 CardItem(
@@ -116,7 +110,7 @@ def parse_deck_text(text: str) -> ParseResult:
                     card_name=card_name,
                     set_code=set_code,
                     collector_number=collector_number,
-                    prompt=prompt,
+                    prompt=raw_prompt,
                 )
             )
             total_copies += copies
@@ -142,13 +136,6 @@ def parse_deck_text(text: str) -> ParseResult:
                     errors.append(f"Line {idx}: Missing prompt for card '{card_name}'")
                     continue
 
-                if prompt_part and global_prompt:
-                    prompt = f"{global_prompt} {prompt_part}"
-                elif prompt_part:
-                    prompt = prompt_part
-                else:
-                    prompt = global_prompt
-
                 card_id = f"card_{idx}_{set_code}_{collector_number}".lower()
                 cards.append(
                     CardItem(
@@ -158,7 +145,7 @@ def parse_deck_text(text: str) -> ParseResult:
                         card_name=card_name,
                         set_code=set_code,
                         collector_number=collector_number,
-                        prompt=prompt,
+                        prompt=prompt_part,
                     )
                 )
                 total_copies += copies
@@ -186,7 +173,7 @@ def parse_deck_text(text: str) -> ParseResult:
                         card_name=card_name,
                         set_code=set_code,
                         collector_number=collector_number,
-                        prompt=global_prompt,
+                        prompt="",
                     )
                 )
                 total_copies += copies

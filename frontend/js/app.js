@@ -92,6 +92,9 @@ function initUI() {
   // MPC Upload trigger
   document.getElementById("btnStartMpcUpload").addEventListener("click", startMpcUpload);
 
+  // Copy Snippet trigger
+  document.getElementById("btnCopySnippet").addEventListener("click", copySnippetToClipboard);
+
   // Save settings
   document.getElementById("btnSaveSettings").addEventListener("click", saveSettings);
 }
@@ -347,12 +350,50 @@ function openDoneModal() {
     }
   }
   document.getElementById("modalBracket").textContent = `${bracket} Cards Bracket`;
+
+  // Dynamically configure Bookmarklet & Snippet
+  const origin = window.location.origin;
+  const bookmarkletBtn = document.getElementById("mpcBookmarklet");
+  const snippetCode = document.getElementById("snippetCode");
+
+  if (bookmarkletBtn) {
+    bookmarkletBtn.href = `javascript:(function(){window.__MPC_SERVER_URL__='${origin}';var s=document.createElement('script');s.src='${origin}/api/mpc/injector.js?t='+Date.now();document.body.appendChild(s);})();`;
+  }
+  if (snippetCode) {
+    snippetCode.textContent = `fetch('${origin}/api/mpc/injector.js').then(r=>r.text()).then(eval)`;
+  }
+
   modal.classList.add("active");
+}
+
+async function copySnippetToClipboard() {
+  const snippetCode = document.getElementById("snippetCode");
+  const btn = document.getElementById("btnCopySnippet");
+  if (!snippetCode || !btn) return;
+
+  const textToCopy = snippetCode.textContent;
+  try {
+    await navigator.clipboard.writeText(textToCopy);
+    const originalText = btn.textContent;
+    btn.textContent = "✅ Copied!";
+    btn.style.background = "var(--accent-success)";
+    btn.style.borderColor = "var(--accent-success)";
+    btn.style.color = "#fff";
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.style.background = "";
+      btn.style.borderColor = "";
+      btn.style.color = "";
+    }, 2000);
+  } catch (err) {
+    alert("Copy failed: " + err.message);
+  }
 }
 
 async function startMpcUpload() {
   const terminal = document.getElementById("mpcLogTerminal");
   const btn = document.getElementById("btnStartMpcUpload");
+  terminal.style.display = "block";
   terminal.textContent = "Connecting to MakePlayingCards automation...\n";
   btn.disabled = true;
   btn.innerHTML = `<span class="spinner"></span> Uploading...`;
