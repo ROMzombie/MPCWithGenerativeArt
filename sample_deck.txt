@@ -1,3 +1,4 @@
-1 Byode, Inverse Sun (PH21) 3	A hirsute bear model from the Colt era reclines on the hood of a classic car
-1 All-Seeing Toby (SLD) 2695	A muscular man with a full beard dressed in a tight-fitting scout's uniform peers from the rail of a forest watchtower
-1 Animate Dead (SLD) 2189	A well-built bald old-man with a full white beard wearing a bathrobe stands over a pile of magaizines surrounded by burning black candles with his arms raised
+# the theme is "a dancing and singing cartoon purple t-rex"
+1 Byode, Inverse Sun (PH21) 3	holding a sphere of black light
+1 All-Seeing Toby (SLD) 2695	looking over a forest from the deck of a watchtower
+1 Animate Dead (SLD) 2189	hands raised in a dark room with black flame candles around him

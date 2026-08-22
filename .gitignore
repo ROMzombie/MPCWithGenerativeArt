@@ -1,5 +1,4 @@
-
-# Beads / Dolt files (added by bd init)
+# Beads / Dolt files
 .dolt/
 *.db
 .beads-credential-key
@@ -7,16 +6,58 @@
 
 # Environment configurations & local secrets
 .env
-.env.local
+.env.*
+!.env.example
 
-# Python cache & artifacts
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-
+# Application runtime cache and generated card outputs
 cache/*
+!cache/**/.gitkeep
 output/*
-.env
+!output/**/.gitkeep
+temp/
+tmp/
 
+# Python caches and testing artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging & distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Playwright & test reports
+.playwright/
+playwright-report/
+test-results/
+
+# Logs
+*.log
+
+# IDE & Editor metadata
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini

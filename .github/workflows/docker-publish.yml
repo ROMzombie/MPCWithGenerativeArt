@@ -1,15 +1,10 @@
-name: CI & Docker Publish
+name: Release & Docker Publish
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*.*.*'
       - 'v*'
-  pull_request:
-    branches:
-      - main
 
 env:
   REGISTRY: ghcr.io
@@ -37,6 +32,9 @@ jobs:
           playwright install --with-deps chromium
 
       - name: Run unit and integration tests
+        env:
+          TESTING: "true"
+          ENV_FILE: "none"
         run: |
           python -m unittest tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py
 
@@ -68,18 +66,17 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

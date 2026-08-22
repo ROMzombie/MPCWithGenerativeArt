@@ -1,5 +1,9 @@
 # MPCWithGenerativeArt
 
+[![CI](https://github.com/ROMzombie/MPCWithGenerativeArt/actions/workflows/ci.yml/badge.svg)](https://github.com/ROMzombie/MPCWithGenerativeArt/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ROMzombie/MPCWithGenerativeArt?color=blue&logo=github)](https://github.com/ROMzombie/MPCWithGenerativeArt/releases)
+[![Container](https://img.shields.io/badge/ghcr.io-ROMzombie%2FMPCWithGenerativeArt-blue?logo=docker)](https://github.com/ROMzombie/MPCWithGenerativeArt/pkgs/container/mpcwithgenerativeart)
+
 MPCWithGenerativeArt creates full-art card decks for [MakePlayingCards](https://www.makeplayingcards.com/). The application combines AI image generation, Scryfall card frames, and 800 DPI print compositing.
 
 ---
