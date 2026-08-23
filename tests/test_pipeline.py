@@ -175,12 +175,19 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertIn("stat_box", boxes)
         self.assertIn("title_box", boxes)
         self.assertIn("type_box", boxes)
+        self.assertIn("station_circles", boxes)
 
         # Check bounds
         cw, ch = card_img.size
         rx1, ry1, rx2, ry2 = boxes["rules_box"]
         self.assertTrue(0 <= rx1 < rx2 <= cw)
         self.assertTrue(int(ch * 0.5) < ry1 < ry2 <= ch)
+        self.assertGreaterEqual(ry2, int(960 * (ch / 1040.0)))
+
+        # Title pill bounds must preserve rounded end caps and beveled shadows
+        tp1, tp2, tp3, tp4 = boxes["title_pill"]
+        self.assertLessEqual(tp1, int(36 * (cw / 745.0)))
+        self.assertGreaterEqual(tp3, int(708 * (cw / 745.0)))
 
         # Universewalker Byode has statistic/loyalty box and polygon
         self.assertIsNotNone(boxes["stat_box"])
@@ -236,6 +243,50 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
             target_dpi=800,
         )
         self.assertEqual(final_img.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
+
+    async def test_station_card_circle_detection_and_masking(self):
+        # 1. Test 1-station circle card (Adagia, Windswept Bastion - EOE 250)
+        adagia_data = await scryfall_client.get_card("eoe", "250", "Adagia, Windswept Bastion")
+        adagia_img = Image.open(adagia_data.cached_png_path).convert("RGB")
+        adagia_boxes = detect_card_boxes(
+            adagia_img,
+            type_line=adagia_data.type_line,
+            layout=adagia_data.layout,
+        )
+        self.assertEqual(len(adagia_boxes["station_circles"]), 1)
+        c1 = adagia_boxes["station_circles"][0]
+        # Circle must be in left margin around x=47, radius~27
+        self.assertLess(c1[0], int(26 * (adagia_img.width / 745.0)))
+        self.assertGreater(c1[2], int(70 * (adagia_img.width / 745.0)))
+
+        # 2. Test 2-station circle card (Dawnsire, Sunstar Dreadnought - EOE 238)
+        dawnsire_data = await scryfall_client.get_card("eoe", "238", "Dawnsire, Sunstar Dreadnought")
+        dawnsire_img = Image.open(dawnsire_data.cached_png_path).convert("RGB")
+        dawnsire_boxes = detect_card_boxes(
+            dawnsire_img,
+            type_line=dawnsire_data.type_line,
+            layout=dawnsire_data.layout,
+        )
+        self.assertEqual(len(dawnsire_boxes["station_circles"]), 2)
+
+        # 3. Test non-station creature has 0 station circles and full bottom rules box
+        ekthi_data = await scryfall_client.get_card("mbc", "1", "Ekthi, Contaminator Priest")
+        ekthi_img = Image.open(ekthi_data.cached_png_path).convert("RGB")
+        ekthi_boxes = detect_card_boxes(
+            ekthi_img,
+            type_line=ekthi_data.type_line,
+            layout=ekthi_data.layout,
+        )
+        self.assertEqual(len(ekthi_boxes["station_circles"]), 0)
+        self.assertIsNotNone(ekthi_boxes["stat_box"])
+        self.assertGreaterEqual(ekthi_boxes["rules_box"][3], int(960 * (ekthi_img.height / 1040.0)))
+        self.assertGreaterEqual(ekthi_boxes["stat_box"][3], int(980 * (ekthi_img.height / 1040.0)))
+
+        # 4. Composite station card and verify print dimensions
+        gen = MockProceduralGenerator()
+        adagia_art = await gen.generate_art("space bastion on cliff", "Adagia", adagia_img.width, adagia_img.height)
+        adagia_final = composite_card(adagia_img, adagia_art, card_boxes=adagia_boxes)
+        self.assertEqual(adagia_final.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
 
     async def test_borderless_creature_and_noncreature_masking(self):
         # 1. Test All-Seeing Toby (SLD 2695) - Borderless Creature with Nickname / Subtitle
@@ -305,7 +356,7 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sc_pill[1], int(orig_pill[1] * 0.90 + oy))
 
     async def test_scaled_bleed_compositor_edge_bleed_art(self):
-        # Verify that scaled compositing ensures edge bleed area contains only art and no black padding
+        # Verify that compositing ensures edge bleed area contains art and matches 800 DPI target
         card_data = await scryfall_client.get_card("ph21", "3", "Byode, Inverse Sun")
         card_img = Image.open(card_data.cached_png_path).convert("RGB")
         boxes = detect_card_boxes(card_img, type_line=card_data.type_line)
@@ -329,3 +380,4 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
