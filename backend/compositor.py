@@ -214,6 +214,7 @@ def detect_card_boxes(
     is_case = (l_lower == "case") or ("case" in t_lower)
     is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
     is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
+    is_adventure = (l_lower == "adventure") or ("adventure" in t_lower) or ("adventure" in effects)
     is_planeswalker = "walker" in t_lower
     is_creature = any(k in t_lower for k in ["creature", "vehicle", "spacecraft"])
     is_station = any(k in t_lower for k in ["planet", "station", "spacecraft"]) or "station" in l_lower
@@ -282,8 +283,29 @@ def detect_card_boxes(
         ]
         stat_box = (int(640 * sx), int(20 * sy), int(730 * sx), int(100 * sy))
         holo_stamp = (int(450 * sx), int(914 * sy), int(536 * sx), int(954 * sy))
+    elif is_adventure:
+        # Adventure split layout (Left: Adventure Spell Scroll, Right: Creature text box)
+        title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+        title_box = title_pill
+        type_box = (int(42 * sx), int(576 * sy), int(702 * sx), int(632 * sy))
+        rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
+        holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
+        stat_polygon = [
+            (int(585 * sx), int(918 * sy)),
+            (int(695 * sx), int(918 * sy)),
+            (int(708 * sx), int(930 * sy)),
+            (int(708 * sx), int(970 * sy)),
+            (int(695 * sx), int(984 * sy)),
+            (int(585 * sx), int(984 * sy)),
+            (int(568 * sx), int(966 * sy)),
+            (int(566 * sx), int(951 * sy)),
+            (int(568 * sx), int(936 * sy)),
+            (int(585 * sx), int(918 * sy)),
+        ]
+        stat_box = (int(566 * sx), int(918 * sy), int(708 * sx), int(984 * sy))
     else:
         # Standard Card Frame (Creature, Planeswalker, Instant, Sorcery, Enchantment, Artifact, Land)
+        # Note: Only name pill (and subtitle if present) is masked; legendary crowns are excluded
         title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
         if has_flavor_name:
             subtitle_polygon = [
@@ -313,13 +335,26 @@ def detect_card_boxes(
             ]
             stat_box = (int(599 * sx), int(928 * sy), int(709 * sx), int(990 * sy))
         elif is_creature:
-            stat_box = (int(570 * sx), int(918 * sy), int(708 * sx), int(984 * sy))
+            stat_polygon = [
+                (int(585 * sx), int(918 * sy)),
+                (int(695 * sx), int(918 * sy)),
+                (int(708 * sx), int(930 * sy)),
+                (int(708 * sx), int(970 * sy)),
+                (int(695 * sx), int(984 * sy)),
+                (int(585 * sx), int(984 * sy)),
+                (int(568 * sx), int(966 * sy)),
+                (int(566 * sx), int(951 * sy)),
+                (int(568 * sx), int(936 * sy)),
+                (int(585 * sx), int(918 * sy)),
+            ]
+            stat_box = (int(566 * sx), int(918 * sy), int(708 * sx), int(984 * sy))
             if is_borderless:
                 rules_box = (int(40 * sx), int(626 * sy), int(704 * sx), int(964 * sy))
             else:
                 rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
         else:
             stat_box = None
+            stat_polygon = None
             if is_borderless:
                 rules_box = (int(40 * sx), int(626 * sy), int(704 * sx), int(964 * sy))
             else:
@@ -565,14 +600,16 @@ def composite_full_art_card(
     # 3. Composite Rules Text Box & Station Circles & Holo Stamp Crest
     if is_borderless:
         cdraw = ImageDraw.Draw(composite)
-        if sb and not stat_poly:
+        if stat_poly or sb:
+            pt_left = stat_poly[6][0] if (stat_poly and len(stat_poly) > 6) else (sb[0] if sb else rb[2])
+            pt_top = stat_poly[0][1] if stat_poly else (sb[1] if sb else rb[3])
             notch_offset = int(6 * (eff_card_h / 1040.0))
             rb_poly = [
                 (rb[0], rb[1]),
                 (rb[2], rb[1]),
-                (rb[2], sb[1] + notch_offset),
-                (sb[0], sb[1] + notch_offset),
-                (sb[0], rb[3]),
+                (rb[2], pt_top + notch_offset),
+                (pt_left, pt_top + notch_offset),
+                (pt_left, rb[3]),
                 (rb[0], rb[3]),
             ]
             cdraw.polygon(rb_poly, fill=(16, 18, 22, 235))
@@ -580,11 +617,11 @@ def composite_full_art_card(
                 (rb[0], rb[3]),
                 (rb[0], rb[1]),
                 (rb[2], rb[1]),
-                (rb[2], sb[1] + notch_offset),
+                (rb[2], pt_top + notch_offset),
             ], fill=(60, 65, 75, 255), width=2)
             cdraw.line([
                 (rb[0], rb[3]),
-                (sb[0], rb[3]),
+                (pt_left, rb[3]),
             ], fill=(60, 65, 75, 255), width=2)
         else:
             cdraw.rounded_rectangle(rb, radius=rules_radius, fill=(16, 18, 22, 235), outline=(60, 65, 75, 255), width=2)

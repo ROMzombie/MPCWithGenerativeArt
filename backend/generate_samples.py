@@ -335,6 +335,22 @@ SAMPLE_CARD_VARIANTS: List[Dict[str, Any]] = [
             "Bottom holographic security stamp oval",
         ],
     },
+    {
+        "id": "adventure",
+        "set_code": "eld",
+        "collector_number": "14",
+        "card_name": "Giant Killer // Chop Down",
+        "category": "Adventure (Creature / Spell)",
+        "description": "Adventure frame with split left-side Adventure spell tome and right-side creature text box, plus Power/Toughness badge.",
+        "prompt": "Valiant miniature armored knight drawing glowing enchanted sword facing colossal giant shadow",
+        "key_elements": [
+            "Creature title pill",
+            "Creature type line",
+            "Left Adventure spell scroll (Chop Down 2W Instant)",
+            "Right creature rules text box",
+            "Bottom-right Power/Toughness box (1/2)",
+        ],
+    },
 ]
 
 

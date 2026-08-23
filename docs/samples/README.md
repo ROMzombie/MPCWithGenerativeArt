@@ -28,6 +28,7 @@ This document showcases full-art generative card compositing across all supporte
 - [Station Card (1 Circle Badge) — Adagia, Windswept Bastion](#station-card-1-circle-badge)
 - [Station Card (2 Circle Badges) — Dawnsire, Sunstar Dreadnought](#station-card-2-circle-badges)
 - [Station Card (3 Circle Badges) — Entropic Battlecruiser](#station-card-3-circle-badges)
+- [Adventure (Creature / Spell) — Giant Killer // Chop Down](#adventure-creature--spell)
 
 ---
 
@@ -398,6 +399,25 @@ This document showcases full-art generative card compositing across all supporte
 - Rules text box with 3 station ability tiers
 - Bottom-right Power/Toughness box (10/10)
 - Bottom holographic security stamp oval
+
+---
+
+### Adventure (Creature / Spell)
+
+**Card:** `Giant Killer // Chop Down` (`ELD` #14)  
+**Description:** Adventure frame with split left-side Adventure spell tome and right-side creature text box, plus Power/Toughness badge.  
+**Sample Prompt:** *"Valiant miniature armored knight drawing glowing enchanted sword facing colossal giant shadow"*
+
+<p align="center">
+  <img src="images/adventure_thumb.jpg" alt="Giant Killer // Chop Down Sample" width="400" />
+</p>
+
+**Key Frame Elements Preserved:**
+- Creature title pill
+- Creature type line
+- Left Adventure spell scroll (Chop Down 2W Instant)
+- Right creature rules text box
+- Bottom-right Power/Toughness box (1/2)
 
 ---
 

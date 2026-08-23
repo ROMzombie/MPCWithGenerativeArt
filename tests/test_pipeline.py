@@ -303,7 +303,8 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(toby_boxes["is_borderless"])
         self.assertIsNotNone(toby_boxes["stat_box"])
-        self.assertIsNone(toby_boxes["stat_polygon"])
+        self.assertIsNotNone(toby_boxes["stat_polygon"])
+        self.assertEqual(len(toby_boxes["stat_polygon"]), 10)
         # Title box must include subtitle banner (height > 100)
         self.assertGreater(toby_boxes["title_box"][3] - toby_boxes["title_box"][1], 90)
 
@@ -405,13 +406,21 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(battle_boxes["stat_polygon"])
         self.assertEqual(len(battle_boxes["stat_polygon"]), 4)
 
-        # 5. Composite all 4 special layouts and verify 800 DPI outputs
+        # 5. Adventure (Giant Killer // Chop Down - ELD 14)
+        adv_data = await scryfall_client.get_card("eld", "14", "Giant Killer // Chop Down")
+        adv_img = Image.open(adv_data.cached_png_path).convert("RGB")
+        adv_boxes = detect_card_boxes(adv_img, type_line=adv_data.type_line, layout=adv_data.layout)
+        self.assertIsNotNone(adv_boxes["stat_polygon"])
+        self.assertEqual(len(adv_boxes["stat_polygon"]), 10)
+
+        # 6. Composite all special layouts and verify 800 DPI outputs
         gen = MockProceduralGenerator()
         for c_img, c_boxes, c_name in [
             (saga_img, saga_boxes, "Elspeth Conquers Death"),
             (class_img, class_boxes, "Paladin Class"),
             (room_img, room_boxes, "Dollmaker's Shop // Porcelain Gallery"),
             (battle_img, battle_boxes, "Invasion of Gobakhan"),
+            (adv_img, adv_boxes, "Giant Killer // Chop Down"),
         ]:
             art = await gen.generate_art("test art", c_name, c_img.width, c_img.height)
             comp = composite_card(c_img, art, card_boxes=c_boxes)
