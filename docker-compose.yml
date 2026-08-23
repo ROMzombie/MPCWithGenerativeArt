@@ -9,15 +9,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - GENERATOR_PROVIDER=perchance
-      - XAI_API_KEY=
-      - GEMINI_API_KEY=
-      - OPENAI_API_KEY=
-      - HF_TOKEN=
-      - GENERATOR_TIMEOUT=300.0
-      - GENERATOR_READ_TIMEOUT=300.0
-      - GENERATOR_CONNECT_TIMEOUT=60.0
-      - GENERATOR_WRITE_TIMEOUT=60.0
+      - GENERATOR_PROVIDER=${GENERATOR_PROVIDER:-perchance}
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - GENERATOR_TIMEOUT=${GENERATOR_TIMEOUT:-300.0}
+      - GENERATOR_READ_TIMEOUT=${GENERATOR_READ_TIMEOUT:-300.0}
+      - GENERATOR_CONNECT_TIMEOUT=${GENERATOR_CONNECT_TIMEOUT:-60.0}
+      - GENERATOR_WRITE_TIMEOUT=${GENERATOR_WRITE_TIMEOUT:-60.0}
     volumes:
       - mpc_output:/app/output
       - mpc_cache:/app/cache

@@ -6,6 +6,8 @@
 
 MPCWithGenerativeArt creates full-art card decks for [MakePlayingCards](https://www.makeplayingcards.com/). The application combines AI image generation, Scryfall card frames, and 800 DPI print compositing.
 
+![MPC With Generative Art Interface and Card Previews](docs/images/sample.png)
+
 ---
 
 ## Features
@@ -22,18 +24,39 @@ MPCWithGenerativeArt creates full-art card decks for [MakePlayingCards](https://
 
 ### Option 1: Docker Compose (Recommended)
 
-1. Create a `docker-compose.yml` file or clone this repository.
-2. Start the container:
+1. Clone this repository or copy [`docker-compose.yml`](docker-compose.yml) and [`.env.example`](.env.example).
+2. Create and configure your `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` to set your desired `GENERATOR_PROVIDER` and API keys:
+
+```ini
+GENERATOR_PROVIDER=grok
+XAI_API_KEY=your_xai_api_key_here
+```
+
+3. Start the container:
 
 ```bash
 docker compose up -d
 ```
 
-3. Open `http://localhost:8000` in your web browser.
+Docker Compose automatically loads values from the `.env` file into the container environment.
+
+4. Open `http://localhost:8000` in your web browser.
 
 ### Option 2: Docker CLI
 
-Run the pre-built image from the GitHub Container Registry:
+1. Create your `.env` configuration file:
+
+```bash
+cp .env.example .env
+```
+
+2. Run the container with the `--env-file` flag:
 
 ```bash
 docker run -d \
@@ -41,13 +64,11 @@ docker run -d \
   -p 8000:8000 \
   -v mpc_output:/app/output \
   -v mpc_cache:/app/cache \
-  -e GENERATOR_PROVIDER=perchance \
+  --env-file .env \
   ghcr.io/romzombie/mpcwithgenerativeart:latest
 ```
 
-Open `http://localhost:8000` in your browser.
-
-To pass your API keys, add the environment flags:
+Alternatively, pass individual environment flags:
 
 ```bash
 docker run -d \
@@ -59,6 +80,8 @@ docker run -d \
   -e XAI_API_KEY=your_xai_key_here \
   ghcr.io/romzombie/mpcwithgenerativeart:latest
 ```
+
+3. Open `http://localhost:8000` in your web browser.
 
 ---
 
