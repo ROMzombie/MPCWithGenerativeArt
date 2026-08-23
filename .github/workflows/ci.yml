@@ -34,4 +34,4 @@ jobs:
           TESTING: "true"
           ENV_FILE: "none"
         run: |
-          python -m unittest tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py
+          python -m unittest tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py tests/test_samples.py

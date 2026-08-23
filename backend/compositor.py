@@ -82,12 +82,27 @@ def scale_card_frame_and_boxes(
             for c in circles
         ]
 
+    def scale_extra(extras: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        if not extras:
+            return []
+        res = []
+        for e in extras:
+            b = e.get("box")
+            if b:
+                res.append({
+                    "box": scale_box(b),
+                    "type": e.get("type", "rect"),
+                })
+        return res
+
     scaled_boxes = {
         "art_box": scale_box(card_boxes.get("art_box")),
         "rules_box": scale_box(card_boxes.get("rules_box")),
         "stat_box": scale_box(card_boxes.get("stat_box")),
         "stat_polygon": scale_poly(card_boxes.get("stat_polygon")),
         "station_circles": scale_circles(card_boxes.get("station_circles")),
+        "holo_stamp": scale_box(card_boxes.get("holo_stamp")),
+        "extra_boxes": scale_extra(card_boxes.get("extra_boxes")),
         "title_box": scale_box(card_boxes.get("title_box")),
         "title_pill": scale_box(card_boxes.get("title_pill")),
         "subtitle_polygon": scale_poly(card_boxes.get("subtitle_polygon")),
@@ -191,106 +206,150 @@ def detect_card_boxes(
     art_box = detect_art_box(card_img, art_crop_img)
 
     t_lower = (type_line or "").lower()
-    is_planeswalker = "walker" in t_lower
-    is_creature = any(k in t_lower for k in ["creature", "vehicle"])
-    is_battle = any(k in t_lower for k in ["battle", "siege"])
-    is_station = any(k in t_lower for k in ["planet", "station", "spacecraft"]) or "station" in (layout or "").lower()
-
+    l_lower = (layout or "").lower()
     effects = [str(e).lower() for e in (frame_effects or [])]
+
+    is_saga = (l_lower == "saga") or ("saga" in t_lower)
+    is_class = (l_lower == "class") or ("class" in t_lower)
+    is_case = (l_lower == "case") or ("case" in t_lower)
+    is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
+    is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
+    is_planeswalker = "walker" in t_lower
+    is_creature = any(k in t_lower for k in ["creature", "vehicle", "spacecraft"])
+    is_station = any(k in t_lower for k in ["planet", "station", "spacecraft"]) or "station" in l_lower
+
     is_borderless = (
         (border_color == "borderless")
         or ("inverted" in effects)
         or ("showcase" in effects)
         or ("extendedart" in effects)
         or bool(full_art)
-        or (layout == "art_series")
+        or (l_lower == "art_series")
     )
     has_flavor_name = bool(flavor_name)
 
-    # 2. Title Box Detection (exact pill + subtitle polygon if present)
-    # Bounds: (36*sx, 42*sy, 710*sx, 99*sy) preserves full rounded end caps and beveled shadows
-    title_pill = (int(36 * sx), int(42 * sy), int(710 * sx), int(99 * sy))
-    subtitle_polygon = None
-    if has_flavor_name:
-        subtitle_polygon = [
-            (int(85 * sx), int(94 * sy)),
-            (int(660 * sx), int(94 * sy)),
-            (int(636 * sx), int(138 * sy)),
-            (int(109 * sx), int(138 * sy)),
-        ]
-        title_box = (int(36 * sx), int(42 * sy), int(710 * sx), int(138 * sy))
-    else:
-        title_box = title_pill
-
-    # 3. Type Line Box Detection
-    type_box = (int(36 * sx), int(578 * sy), int(710 * sx), int(630 * sy))
-
-    # 4. Statistic Box & Rules Text Box Detection
-    stat_box = None
-    stat_polygon = None
-
-    if is_planeswalker:
-        # Planeswalker / Universewalker layout
-        rules_box = (int(36 * sx), int(646 * sy), int(708 * sx), int(964 * sy))
-        # Irregular polygonal loyalty shield badge (notched top, vertical sides, chevron pointed tip)
-        stat_polygon = [
-            (int(604 * sx), int(928 * sy)),
-            (int(654 * sx), int(934 * sy)),
-            (int(704 * sx), int(928 * sy)),
-            (int(709 * sx), int(946 * sy)),
-            (int(709 * sx), int(968 * sy)),
-            (int(654 * sx), int(990 * sy)),
-            (int(599 * sx), int(968 * sy)),
-            (int(599 * sx), int(946 * sy)),
-        ]
-        stat_box = (int(599 * sx), int(928 * sy), int(709 * sx), int(990 * sy))
-    elif is_creature:
-        # Creature / Vehicle layout with Power & Toughness box
-        if is_borderless:
-            rules_box = (int(36 * sx), int(626 * sy), int(708 * sx), int(964 * sy))
-            stat_box = (int(570 * sx), int(918 * sy), int(708 * sx), int(984 * sy))
-        else:
-            rules_box = (int(36 * sx), int(646 * sy), int(708 * sx), int(964 * sy))
-            stat_box = (int(570 * sx), int(918 * sy), int(708 * sx), int(984 * sy))
-    elif is_battle:
-        # Battle layout with Defense box
-        rules_box = (int(36 * sx), int(646 * sy), int(708 * sx), int(964 * sy))
-        stat_box = (int(570 * sx), int(918 * sy), int(708 * sx), int(984 * sy))
-    else:
-        # Standard non-creature layout (Enchantment, Instant, Sorcery, Artifact, Land)
-        if is_borderless:
-            rules_box = (int(36 * sx), int(626 * sy), int(708 * sx), int(964 * sy))
-        else:
-            rules_box = (int(36 * sx), int(646 * sy), int(708 * sx), int(964 * sy))
-
-    # 5. Targeted Station Circle Detection
-    # Detects 1, 2, or 3 circular station badges protruding from the left rules box border
+    # 2. Specialized Frame Geometry Detection
+    extra_boxes: List[Dict[str, Any]] = []
     station_circles: List[Tuple[int, int, int, int]] = []
-    if is_station:
-        probe_x = int(24 * sx)
-        found_segments = []
-        in_seg = False
-        seg_start = 0
-        for y in range(int(650 * sy), int(950 * sy)):
-            p = card_img.getpixel((probe_x, y))
-            b = sum(p[:3]) / 3.0
-            if b > 28:
-                if not in_seg:
-                    in_seg = True
-                    seg_start = y
-            else:
-                if in_seg:
-                    in_seg = False
-                    if y - seg_start >= int(14 * sy):
-                        found_segments.append((seg_start, y))
-        if in_seg and (int(950 * sy) - seg_start >= int(14 * sy)):
-            found_segments.append((seg_start, int(950 * sy)))
+    stat_polygon = None
+    subtitle_polygon = None
 
-        circ_cx = int(47 * sx)
-        circ_r = int(27 * sx)
-        for s_y, e_y in found_segments:
-            circ_cy = (s_y + e_y) // 2
-            station_circles.append((circ_cx - circ_r, circ_cy - circ_r, circ_cx + circ_r, circ_cy + circ_r))
+    if is_saga:
+        # Saga vertical chapter layout: left chapters column, right art column, bottom type pill
+        title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+        title_box = title_pill
+        rules_box = (int(40 * sx), int(108 * sy), int(372 * sx), int(868 * sy))
+        art_box = (int(372 * sx), int(108 * sy), int(704 * sx), int(868 * sy))
+        type_box = (int(42 * sx), int(876 * sy), int(702 * sx), int(932 * sy))
+        stat_box = None
+        holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
+    elif is_class or is_case:
+        # Class / Case vertical layout: left art column, right level abilities column, bottom type pill
+        title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+        title_box = title_pill
+        art_box = (int(40 * sx), int(108 * sy), int(372 * sx), int(868 * sy))
+        rules_box = (int(372 * sx), int(108 * sy), int(704 * sx), int(868 * sy))
+        type_box = (int(42 * sx), int(876 * sy), int(702 * sx), int(932 * sy))
+        stat_box = None
+        holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
+    elif is_room:
+        # Room horizontal dual-door layout inside standard vertical card
+        title_pill = (int(42 * sx), int(488 * sy), int(130 * sx), int(950 * sy))
+        title_box_2 = (int(42 * sx), int(50 * sy), int(130 * sx), int(484 * sy))
+        title_box = title_pill
+        rules_box = (int(540 * sx), int(488 * sy), int(704 * sx), int(950 * sy))
+        rules_box_2 = (int(540 * sx), int(50 * sy), int(704 * sx), int(484 * sy))
+        type_box = (int(450 * sx), int(50 * sy), int(530 * sx), int(950 * sy))
+        art_box = (int(130 * sx), int(50 * sy), int(450 * sx), int(950 * sy))
+        stat_box = None
+        holo_stamp = (int(450 * sx), int(914 * sy), int(530 * sx), int(954 * sy))
+        extra_boxes = [
+            {"box": title_box_2, "type": "pill"},
+            {"box": rules_box_2, "type": "rect"},
+        ]
+    elif is_battle:
+        # Battle - Siege landscape format inside standard vertical card
+        title_pill = (int(42 * sx), int(50 * sy), int(130 * sx), int(896 * sy))
+        title_box = title_pill
+        type_box = (int(570 * sx), int(590 * sy), int(704 * sx), int(896 * sy))
+        rules_box = (int(570 * sx), int(50 * sy), int(704 * sx), int(586 * sy))
+        art_box = (int(130 * sx), int(50 * sy), int(570 * sx), int(950 * sy))
+        stat_polygon = [
+            (int(640 * sx), int(30 * sy)),
+            (int(730 * sx), int(20 * sy)),
+            (int(730 * sx), int(100 * sy)),
+            (int(640 * sx), int(70 * sy)),
+        ]
+        stat_box = (int(640 * sx), int(20 * sy), int(730 * sx), int(100 * sy))
+        holo_stamp = (int(450 * sx), int(914 * sy), int(536 * sx), int(954 * sy))
+    else:
+        # Standard Card Frame (Creature, Planeswalker, Instant, Sorcery, Enchantment, Artifact, Land)
+        title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+        if has_flavor_name:
+            subtitle_polygon = [
+                (int(85 * sx), int(94 * sy)),
+                (int(660 * sx), int(94 * sy)),
+                (int(636 * sx), int(138 * sy)),
+                (int(109 * sx), int(138 * sy)),
+            ]
+            title_box = (int(42 * sx), int(44 * sy), int(702 * sx), int(138 * sy))
+        else:
+            title_box = title_pill
+
+        type_box = (int(42 * sx), int(576 * sy), int(702 * sx), int(632 * sy))
+        holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
+
+        if is_planeswalker:
+            rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
+            stat_polygon = [
+                (int(604 * sx), int(928 * sy)),
+                (int(654 * sx), int(934 * sy)),
+                (int(704 * sx), int(928 * sy)),
+                (int(709 * sx), int(946 * sy)),
+                (int(709 * sx), int(968 * sy)),
+                (int(654 * sx), int(990 * sy)),
+                (int(599 * sx), int(968 * sy)),
+                (int(599 * sx), int(946 * sy)),
+            ]
+            stat_box = (int(599 * sx), int(928 * sy), int(709 * sx), int(990 * sy))
+        elif is_creature:
+            stat_box = (int(570 * sx), int(918 * sy), int(708 * sx), int(984 * sy))
+            if is_borderless:
+                rules_box = (int(40 * sx), int(626 * sy), int(704 * sx), int(964 * sy))
+            else:
+                rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
+        else:
+            stat_box = None
+            if is_borderless:
+                rules_box = (int(40 * sx), int(626 * sy), int(704 * sx), int(964 * sy))
+            else:
+                rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
+
+        if is_station:
+            probe_x = int(24 * sx)
+            found_segments = []
+            in_seg = False
+            seg_start = 0
+            for y in range(int(650 * sy), int(950 * sy)):
+                p = card_img.getpixel((probe_x, y))
+                b = sum(p[:3]) / 3.0
+                if b > 28:
+                    if not in_seg:
+                        in_seg = True
+                        seg_start = y
+                else:
+                    if in_seg:
+                        in_seg = False
+                        if y - seg_start >= int(14 * sy):
+                            found_segments.append((seg_start, y))
+            if in_seg and (int(950 * sy) - seg_start >= int(14 * sy)):
+                found_segments.append((seg_start, int(950 * sy)))
+
+            circ_cx = int(47 * sx)
+            circ_r = int(27 * sx)
+            for s_y, e_y in found_segments:
+                circ_cy = (s_y + e_y) // 2
+                station_circles.append((circ_cx - circ_r, circ_cy - circ_r, circ_cx + circ_r, circ_cy + circ_r))
 
     return {
         "art_box": art_box,
@@ -298,6 +357,8 @@ def detect_card_boxes(
         "stat_box": stat_box,
         "stat_polygon": stat_polygon,
         "station_circles": station_circles,
+        "holo_stamp": holo_stamp,
+        "extra_boxes": extra_boxes,
         "title_box": title_box,
         "title_pill": title_pill,
         "subtitle_polygon": subtitle_polygon,
@@ -331,24 +392,36 @@ def create_card_exclusion_mask(
     mask = Image.new("L", (cw, ch), 0)
     draw = ImageDraw.Draw(mask)
 
-    # 1. Preserve Title Header
-    t_pill = boxes.get("title_pill") or (int(36 * sx), int(42 * sy), int(710 * sx), int(99 * sy))
-    draw.rounded_rectangle(t_pill, radius=max(4, int(26 * sy * s_eff)), fill=255)
+    # 1. Preserve Title Header (Pill + Subtitle Polygon)
+    t_pill = boxes.get("title_pill") or (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+    draw.rounded_rectangle(t_pill, radius=max(4, int(24 * sy * s_eff)), fill=255)
     sub_poly = boxes.get("subtitle_polygon")
     if sub_poly:
         draw.polygon(sub_poly, fill=255)
 
     # 2. Preserve Type Line
-    typ = boxes.get("type_box") or (int(36 * sx), int(578 * sy), int(710 * sx), int(630 * sy))
-    draw.rounded_rectangle([typ[0], typ[1], typ[2], typ[3]], radius=max(4, int(26 * sy * s_eff)), fill=255)
+    typ = boxes.get("type_box") or (int(42 * sx), int(576 * sy), int(702 * sx), int(632 * sy))
+    draw.rounded_rectangle([typ[0], typ[1], typ[2], typ[3]], radius=max(4, int(24 * sy * s_eff)), fill=255)
 
-    # 3. Preserve Rules Text Box & Station Circles
-    rb = boxes.get("rules_box") or (int(36 * sx), int(646 * sy), int(708 * sx), int(964 * sy))
-    draw.rounded_rectangle([rb[0], rb[1], rb[2], rb[3]], radius=max(4, int(10 * sx * s_eff)), fill=255)
+    # 3. Preserve Rules Text Box, Station Circles & Holo Stamp Crest
+    rb = boxes.get("rules_box") or (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
+    draw.rounded_rectangle([rb[0], rb[1], rb[2], rb[3]], radius=max(4, int(8 * sx * s_eff)), fill=255)
     for circ in boxes.get("station_circles", []):
         draw.ellipse([circ[0], circ[1], circ[2], circ[3]], fill=255)
+    holo = boxes.get("holo_stamp")
+    if holo:
+        draw.ellipse([holo[0], holo[1], holo[2], holo[3]], fill=255)
 
-    # 4. Preserve Statistic Text Box / Polygonal Shield if present
+    # 4. Preserve Extra Boxes (e.g. Room Door 2 / Dual Spells)
+    for eb in boxes.get("extra_boxes", []):
+        b = eb.get("box")
+        if b:
+            if eb.get("type") == "pill":
+                draw.rounded_rectangle(b, radius=max(4, int(22 * sx * s_eff)), fill=255)
+            else:
+                draw.rounded_rectangle(b, radius=max(4, int(8 * sx * s_eff)), fill=255)
+
+    # 5. Preserve Statistic Text Box / Polygonal Shield if present
     stat_poly = boxes.get("stat_polygon")
     if stat_poly:
         draw.polygon(stat_poly, fill=255)
@@ -430,28 +503,35 @@ def composite_full_art_card(
 
     # Map all detected boxes to 800 DPI canvas coordinates
     t_pill = map_box(card_boxes.get("title_pill")) or (
-        int(36 * (eff_card_w / 745.0) + ox),
-        int(42 * (eff_card_h / 1040.0) + oy),
-        int(710 * (eff_card_w / 745.0) + ox),
-        int(99 * (eff_card_h / 1040.0) + oy),
+        int(42 * scale_x + ox),
+        int(44 * scale_y + oy),
+        int(702 * scale_x + ox),
+        int(100 * scale_y + oy),
     )
     sub_poly = map_poly(card_boxes.get("subtitle_polygon"))
     typ = map_box(card_boxes.get("type_box")) or (
-        int(36 * (eff_card_w / 745.0) + ox),
-        int(578 * (eff_card_h / 1040.0) + oy),
-        int(710 * (eff_card_w / 745.0) + ox),
-        int(630 * (eff_card_h / 1040.0) + oy),
+        int(42 * scale_x + ox),
+        int(576 * scale_y + oy),
+        int(702 * scale_x + ox),
+        int(632 * scale_y + oy),
     )
     rb = map_box(card_boxes.get("rules_box")) or (
-        int(36 * (eff_card_w / 745.0) + ox),
-        int(646 * (eff_card_h / 1040.0) + oy),
-        int(708 * (eff_card_w / 745.0) + ox),
-        int(964 * (eff_card_h / 1040.0) + oy),
+        int(40 * scale_x + ox),
+        int(646 * scale_y + oy),
+        int(704 * scale_x + ox),
+        int(964 * scale_y + oy),
     )
     sb = map_box(card_boxes.get("stat_box"))
     stat_poly = map_poly(card_boxes.get("stat_polygon"))
     station_circles = map_circles(card_boxes.get("station_circles"))
+    holo_stamp = map_box(card_boxes.get("holo_stamp"))
     is_borderless = card_boxes.get("is_borderless", False)
+
+    extra_boxes = []
+    for eb in card_boxes.get("extra_boxes", []):
+        b = map_box(eb.get("box"))
+        if b:
+            extra_boxes.append({"box": b, "type": eb.get("type", "rect")})
 
     # Fit full-art generated image across the entire 800 DPI canvas
     art_full = ImageOps.fit(
@@ -462,11 +542,11 @@ def composite_full_art_card(
     )
 
     composite = art_full.copy()
-    pill_radius = max(4, int(26 * (eff_card_h / 1040.0)))
-    rules_radius = max(4, int(10 * (eff_card_w / 745.0)))
+    pill_radius = max(4, int(24 * (eff_card_h / 1040.0)))
+    rules_radius = max(4, int(8 * (eff_card_w / 745.0)))
     stat_radius = max(4, int(26 * (eff_card_h / 1040.0)))
 
-    # 1. Composite Title Header (Pill + Subtitle Polygon if present)
+    # 1. Composite Title Header (Pill + Subtitle Polygon)
     t_mask = Image.new("L", (target_width, target_height), 0)
     td = ImageDraw.Draw(t_mask)
     td.rounded_rectangle(t_pill, radius=pill_radius, fill=255)
@@ -482,7 +562,7 @@ def composite_full_art_card(
     typ_mask = typ_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
     composite.paste(card_canvas, (0, 0), typ_mask)
 
-    # 3. Composite Rules Text Box & Station Circles
+    # 3. Composite Rules Text Box & Station Circles & Holo Stamp Crest
     if is_borderless:
         cdraw = ImageDraw.Draw(composite)
         if sb and not stat_poly:
@@ -512,6 +592,9 @@ def composite_full_art_card(
         for circ in station_circles:
             cdraw.ellipse([circ[0], circ[1], circ[2], circ[3]], fill=(16, 18, 22, 235), outline=(60, 65, 75, 255), width=2)
 
+        if holo_stamp:
+            cdraw.ellipse([holo_stamp[0], holo_stamp[1], holo_stamp[2], holo_stamp[3]], fill=(16, 18, 22, 235), outline=(60, 65, 75, 255), width=2)
+
         # Crop rules box region from card canvas
         rules_crop = card_canvas.crop(rb)
         gray = rules_crop.convert("L")
@@ -523,17 +606,37 @@ def composite_full_art_card(
             circ_gray = circ_crop.convert("L")
             circ_mask = circ_gray.point(lambda p: 255 if p > 130 else int(max(0, (p - 75) * 4.5)))
             composite.paste(circ_crop, (circ[0], circ[1]), circ_mask)
+
+        if holo_stamp:
+            holo_crop = card_canvas.crop(holo_stamp)
+            holo_gray = holo_crop.convert("L")
+            holo_mask = holo_gray.point(lambda p: 255 if p > 130 else int(max(0, (p - 75) * 4.5)))
+            composite.paste(holo_crop, (holo_stamp[0], holo_stamp[1]), holo_mask)
     else:
-        # Standard opaque rules box + station circle badges
+        # Standard opaque rules box + station circle badges + holo stamp crest
         rb_mask = Image.new("L", (target_width, target_height), 0)
         rbd = ImageDraw.Draw(rb_mask)
         rbd.rounded_rectangle(rb, radius=rules_radius, fill=255)
         for circ in station_circles:
             rbd.ellipse([circ[0], circ[1], circ[2], circ[3]], fill=255)
+        if holo_stamp:
+            rbd.ellipse([holo_stamp[0], holo_stamp[1], holo_stamp[2], holo_stamp[3]], fill=255)
         rb_mask = rb_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
         composite.paste(card_canvas, (0, 0), rb_mask)
 
-    # 4. Composite Statistic Box (Power/Toughness, Loyalty Shield, or Defense Badge)
+    # 4. Composite Extra Boxes (e.g. Room Door 2 / Dual Spells)
+    for eb in extra_boxes:
+        b = eb["box"]
+        eb_mask = Image.new("L", (target_width, target_height), 0)
+        ebd = ImageDraw.Draw(eb_mask)
+        if eb["type"] == "pill":
+            ebd.rounded_rectangle(b, radius=pill_radius, fill=255)
+        else:
+            ebd.rounded_rectangle(b, radius=rules_radius, fill=255)
+        eb_mask = eb_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
+        composite.paste(card_canvas, (0, 0), eb_mask)
+
+    # 5. Composite Statistic Box (Power/Toughness, Loyalty Shield, or Defense Badge)
     if stat_poly:
         sp_mask = Image.new("L", (target_width, target_height), 0)
         spd = ImageDraw.Draw(sp_mask)
