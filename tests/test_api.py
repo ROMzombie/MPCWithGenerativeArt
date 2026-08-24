@@ -84,18 +84,20 @@ class TestFastAPIEndpoints(unittest.TestCase):
             prompt="An anime girl",
         )
 
-        with patch("backend.generator.MockProceduralGenerator.generate_art", new_callable=AsyncMock) as mock_gen:
-            mock_gen.return_value = None  # Will fail at composite step or we can mock compositor
+        mock_generator_instance = AsyncMock()
+        mock_generator_instance.generate_art = AsyncMock(return_value=None)
+
+        with patch("backend.app.get_generator", return_value=mock_generator_instance):
             with patch("backend.compositor.composite_card") as mock_comp, patch("backend.compositor.save_card_outputs") as mock_save:
                 mock_comp.return_value = MagicMock()
                 mock_save.return_value = ("output/cards/card_test_global.png", "output/thumbnails/card_test_global.jpg")
                 asyncio.run(process_single_card(card))
 
-            mock_gen.assert_called_once()
-            called_prompt = mock_gen.call_args.kwargs["prompt"]
-            self.assertEqual(called_prompt, "studio ghibli watercolor An anime girl")
-            # Card object itself preserves clean prompt
-            self.assertEqual(card.prompt, "An anime girl")
+        mock_generator_instance.generate_art.assert_called_once()
+        called_prompt = mock_generator_instance.generate_art.call_args.kwargs["prompt"]
+        self.assertEqual(called_prompt, "studio ghibli watercolor An anime girl")
+        # Card object itself preserves clean prompt
+        self.assertEqual(card.prompt, "An anime girl")
 
     def setUp(self):
         import tempfile

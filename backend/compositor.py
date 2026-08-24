@@ -220,13 +220,13 @@ def detect_card_boxes(
     is_saga = (l_lower == "saga") or ("saga" in t_lower)
     is_class = (l_lower == "class") or ("class" in t_lower)
     is_case = (l_lower == "case") or ("case" in t_lower)
-    is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
-    is_split = (not is_room) and (
+    is_adventure = (l_lower == "adventure") or ("adventure" in t_lower) or ("adventure" in effects)
+    is_room = ("room" in t_lower) or (l_lower == "room")
+    is_split = (not is_room) and (not is_adventure) and (
         (l_lower == "split")
-        or ("//" in c_lower and any(kw in t_lower for kw in ["instant", "sorcery", "spell"]))
+        or ("//" in c_lower and l_lower != "adventure" and "adventure" not in t_lower and any(kw in t_lower for kw in ["instant", "sorcery", "spell"]))
     )
     is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
-    is_adventure = (l_lower == "adventure") or ("adventure" in t_lower) or ("adventure" in effects)
     is_planeswalker = "walker" in t_lower
     is_creature = any(k in t_lower for k in ["creature", "vehicle", "spacecraft"])
     is_station = any(k in t_lower for k in ["planet", "station", "spacecraft"]) or "station" in l_lower
@@ -302,19 +302,19 @@ def detect_card_boxes(
         stat_box = None
     elif is_room:
         # Room dual-door layout inside standard vertical card:
-        # Left Door (bottom): vertical title pill at bottom-left, rules box at bottom-right
-        # Right Door (top): vertical title pill at top-left, rules box at top-right
+        # Door B (bottom): vertical title pill at bottom-left, rules box at bottom-right
+        # Door A (top): vertical title pill at top-left, rules box at top-right
         # Vertical Type line (Enchantment — Room) at bottom-center. Central reminder text is excluded from mask.
-        title_pill = (int(35 * sx), int(515 * sy), int(140 * sx), int(965 * sy))
+        title_pill = (int(44 * sx), int(515 * sy), int(100 * sx), int(940 * sy))
         title_box = title_pill
-        type_box = (int(440 * sx), int(515 * sy), int(500 * sx), int(965 * sy))
-        rules_box = (int(500 * sx), int(515 * sy), int(665 * sx), int(965 * sy))
-        art_box = (int(140 * sx), int(44 * sy), int(440 * sx), int(965 * sy))
+        type_box = (int(400 * sx), int(515 * sy), int(448 * sx), int(940 * sy))
+        rules_box = (int(538 * sx), int(515 * sy), int(702 * sx), int(940 * sy))
+        art_box = (int(100 * sx), int(44 * sy), int(400 * sx), int(940 * sy))
         stat_box = None
         extra_boxes = [
-            {"box": (int(35 * sx), int(44 * sy), int(140 * sx), int(490 * sy)), "type": "pill"},
-            {"box": (int(440 * sx), int(44 * sy), int(500 * sx), int(100 * sy)), "type": "pill"},
-            {"box": (int(500 * sx), int(44 * sy), int(665 * sx), int(490 * sy)), "type": "rect"},
+            {"box": (int(44 * sx), int(44 * sy), int(100 * sx), int(490 * sy)), "type": "pill"},
+            {"box": (int(400 * sx), int(44 * sy), int(448 * sx), int(100 * sy)), "type": "pill"},
+            {"box": (int(538 * sx), int(44 * sy), int(702 * sx), int(490 * sy)), "type": "rect"},
         ]
     elif is_split:
         # Split card layout (Two variants: With Fuse and Without Fuse)
@@ -326,68 +326,68 @@ def detect_card_boxes(
         )
         if not has_fuse and card_img is not None:
             # Check right-middle probe on card frame
-            probe_p = card_img.getpixel((int(635 * sx), int(505 * sy)))
+            probe_p = card_img.getpixel((int(625 * sx), int(505 * sy)))
             if sum(probe_p[:3]) / 3.0 > 80:
                 has_fuse = True
 
         if has_fuse:
             # Split card WITH Fuse:
-            title_pill = (int(35 * sx), int(510 * sy), int(140 * sx), int(965 * sy))
+            title_pill = (int(44 * sx), int(515 * sy), int(100 * sx), int(965 * sy))
             title_box = title_pill
-            type_box = (int(440 * sx), int(510 * sy), int(500 * sx), int(965 * sy))
-            rules_box = (int(500 * sx), int(515 * sy), int(610 * sx), int(965 * sy))
-            art_box = (int(140 * sx), int(44 * sy), int(440 * sx), int(965 * sy))
+            type_box = (int(415 * sx), int(515 * sy), int(452 * sx), int(965 * sy))
+            rules_box = (int(452 * sx), int(515 * sy), int(605 * sx), int(965 * sy))
+            art_box = (int(100 * sx), int(44 * sy), int(415 * sx), int(965 * sy))
             extra_boxes = [
                 # Top half components
-                {"box": (int(35 * sx), int(44 * sy), int(140 * sx), int(495 * sy)), "type": "pill"},
-                {"box": (int(440 * sx), int(44 * sy), int(500 * sx), int(495 * sy)), "type": "pill"},
-                {"box": (int(500 * sx), int(44 * sy), int(610 * sx), int(490 * sy)), "type": "rect"},
+                {"box": (int(44 * sx), int(44 * sy), int(100 * sx), int(490 * sy)), "type": "pill"},
+                {"box": (int(415 * sx), int(44 * sy), int(452 * sx), int(490 * sy)), "type": "pill"},
+                {"box": (int(452 * sx), int(44 * sy), int(605 * sx), int(490 * sy)), "type": "rect"},
                 # Center connection bridges
-                {"box": (int(35 * sx), int(485 * sy), int(140 * sx), int(520 * sy)), "type": "rect"},
-                {"box": (int(440 * sx), int(485 * sy), int(500 * sx), int(520 * sy)), "type": "rect"},
+                {"box": (int(44 * sx), int(485 * sy), int(100 * sx), int(520 * sy)), "type": "rect"},
+                {"box": (int(415 * sx), int(485 * sy), int(452 * sx), int(520 * sy)), "type": "rect"},
                 # Fuse full-height pill on right
-                {"box": (int(610 * sx), int(44 * sy), int(665 * sx), int(965 * sy)), "type": "pill"},
+                {"box": (int(605 * sx), int(44 * sy), int(650 * sx), int(965 * sy)), "type": "pill"},
             ]
         else:
             # Split card WITHOUT Fuse:
-            title_pill = (int(35 * sx), int(515 * sy), int(140 * sx), int(965 * sy))
+            title_pill = (int(44 * sx), int(515 * sy), int(100 * sx), int(936 * sy))
             title_box = title_pill
-            type_box = (int(440 * sx), int(515 * sy), int(500 * sx), int(965 * sy))
-            rules_box = (int(500 * sx), int(515 * sy), int(665 * sx), int(965 * sy))
-            art_box = (int(140 * sx), int(44 * sy), int(440 * sx), int(965 * sy))
+            type_box = (int(400 * sx), int(515 * sy), int(448 * sx), int(936 * sy))
+            rules_box = (int(452 * sx), int(515 * sy), int(654 * sx), int(936 * sy))
+            art_box = (int(100 * sx), int(44 * sy), int(400 * sx), int(936 * sy))
             extra_boxes = [
-                {"box": (int(35 * sx), int(44 * sy), int(140 * sx), int(490 * sy)), "type": "pill"},
-                {"box": (int(440 * sx), int(44 * sy), int(500 * sx), int(490 * sy)), "type": "pill"},
-                {"box": (int(500 * sx), int(44 * sy), int(665 * sx), int(490 * sy)), "type": "rect"},
+                {"box": (int(44 * sx), int(44 * sy), int(100 * sx), int(465 * sy)), "type": "pill"},
+                {"box": (int(400 * sx), int(44 * sy), int(448 * sx), int(465 * sy)), "type": "pill"},
+                {"box": (int(452 * sx), int(44 * sy), int(654 * sx), int(465 * sy)), "type": "rect"},
             ]
         stat_box = None
     elif is_battle:
         # Battle - Siege landscape format inside standard vertical card
         # Left vertical title column, vertical type line, single continuous rules text box, and 8-pointed defense star
-        title_pill = (int(40 * sx), int(50 * sy), int(98 * sx), int(990 * sy))
+        title_pill = (int(44 * sx), int(52 * sy), int(100 * sx), int(908 * sy))
         title_box = title_pill
-        type_box = (int(556 * sx), int(50 * sy), int(616 * sx), int(990 * sy))
-        rules_box = (int(618 * sx), int(120 * sy), int(690 * sx), int(990 * sy))
-        art_box = (int(98 * sx), int(50 * sy), int(556 * sx), int(990 * sy))
+        type_box = (int(574 * sx), int(52 * sy), int(632 * sx), int(908 * sy))
+        rules_box = (int(636 * sx), int(70 * sy), int(702 * sx), int(890 * sy))
+        art_box = (int(100 * sx), int(52 * sy), int(574 * sx), int(908 * sy))
         stat_polygon = [
-            (int(688 * sx), int(23 * sy)),
-            (int(700 * sx), int(36 * sy)),
-            (int(725 * sx), int(30 * sy)),
-            (int(717 * sx), int(54 * sy)),
-            (int(727 * sx), int(72 * sy)),
-            (int(717 * sx), int(90 * sy)),
-            (int(725 * sx), int(114 * sy)),
-            (int(700 * sx), int(108 * sy)),
-            (int(688 * sx), int(128 * sy)),
-            (int(676 * sx), int(108 * sy)),
-            (int(658 * sx), int(114 * sy)),
-            (int(662 * sx), int(90 * sy)),
-            (int(650 * sx), int(72 * sy)),
-            (int(662 * sx), int(54 * sy)),
-            (int(651 * sx), int(30 * sy)),
-            (int(676 * sx), int(36 * sy)),
+            (int(671 * sx), int(14 * sy)),
+            (int(681 * sx), int(25 * sy)),
+            (int(702 * sx), int(21 * sy)),
+            (int(695 * sx), int(38 * sy)),
+            (int(705 * sx), int(47 * sy)),
+            (int(695 * sx), int(57 * sy)),
+            (int(702 * sx), int(73 * sy)),
+            (int(681 * sx), int(69 * sy)),
+            (int(671 * sx), int(80 * sy)),
+            (int(661 * sx), int(69 * sy)),
+            (int(640 * sx), int(73 * sy)),
+            (int(647 * sx), int(57 * sy)),
+            (int(637 * sx), int(47 * sy)),
+            (int(647 * sx), int(38 * sy)),
+            (int(640 * sx), int(21 * sy)),
+            (int(661 * sx), int(25 * sy)),
         ]
-        stat_box = (int(650 * sx), int(23 * sy), int(727 * sx), int(128 * sy))
+        stat_box = (int(637 * sx), int(14 * sy), int(705 * sx), int(80 * sy))
     elif is_adventure:
         # Adventure split layout (Left: Adventure Spell Scroll, Right: Creature text box)
         title_pill = (int(46 * sx), int(50 * sy), int(698 * sx), int(110 * sy))

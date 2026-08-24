@@ -434,12 +434,13 @@ async def generate_all_samples(
         # Layout-specific art sizing, rotation, and focal positioning
         t_lower = (card_data.type_line or "").lower()
         l_lower = (card_data.layout or "").lower()
-        c_lower = (card_data.name or "").lower()
+        c_lower = (name or "").lower()
         is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
-        is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
-        is_split = (not is_room) and (
+        is_room = ("room" in t_lower) or (l_lower == "room")
+        is_adventure = (l_lower == "adventure") or ("adventure" in t_lower)
+        is_split = (not is_room) and (not is_adventure) and (
             (l_lower == "split")
-            or ("//" in c_lower and any(kw in t_lower for kw in ["instant", "sorcery", "spell"]))
+            or ("//" in c_lower and l_lower != "adventure" and "adventure" not in t_lower and any(kw in t_lower for kw in ["instant", "sorcery", "spell"]))
         )
         is_saga = ("saga" in t_lower) or (l_lower == "saga")
         is_class_or_case = any(k in t_lower for k in ["class", "case"]) or (l_lower in ["class", "case"])
