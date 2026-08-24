@@ -35,14 +35,13 @@ class ParseResult(BaseModel):
     global_prompt: Optional[str] = None
 
 
-# Regex pattern to match: Copies CardName (set) CollectorNumber\tprompt
-# Also supports multiple spaces if tab was replaced by spaces
+# Regex pattern to match: Copies CardName (set) CollectorNumber # prompt
 LINE_PATTERN = re.compile(
-    r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-\*]+)(?:[\t]+|\s{2,}|\s*[\t]\s*)(?P<prompt>.+?)\s*$"
+    r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-\*]+)\s+#\s*(?P<prompt>.*)$"
 )
 
-# Alternative regex if single tab separates card info and prompt
-TAB_SPLIT_PATTERN = re.compile(
+# Alternative regex if card info without prompt (or after split)
+CARD_SPLIT_PATTERN = re.compile(
     r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-\*]+)\s*$"
 )
 
@@ -50,7 +49,7 @@ TAB_SPLIT_PATTERN = re.compile(
 def parse_deck_text(text: str) -> ParseResult:
     """
     Parses deck lines formatted as:
-    Copies CardName (set) CollectorNumber\tprompt
+    Copies CardName (set) CollectorNumber # prompt
 
     If the first line (or first non-empty line) starts with '#', the following
     text is treated as a global prompt returned in ParseResult.global_prompt,
@@ -116,18 +115,18 @@ def parse_deck_text(text: str) -> ParseResult:
             total_copies += copies
             continue
 
-        # Check if line contains a tab separator
-        if "\t" in line:
-            parts = line.split("\t", 1)
+        # Check if line contains a ' # ' separator
+        if " # " in line:
+            parts = line.split(" # ", 1)
             card_part = parts[0].strip()
             prompt_part = parts[1].strip()
 
-            tab_match = TAB_SPLIT_PATTERN.match(card_part)
-            if tab_match:
-                copies = int(tab_match.group("copies"))
-                card_name = tab_match.group("name").strip()
-                set_code = tab_match.group("set").strip().upper()
-                collector_number = tab_match.group("number").strip()
+            card_match = CARD_SPLIT_PATTERN.match(card_part)
+            if card_match:
+                copies = int(card_match.group("copies"))
+                card_name = card_match.group("name").strip()
+                set_code = card_match.group("set").strip().upper()
+                collector_number = card_match.group("number").strip()
 
                 if copies <= 0:
                     errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
@@ -151,14 +150,14 @@ def parse_deck_text(text: str) -> ParseResult:
                 total_copies += copies
                 continue
 
-        # If line has no tab/prompt but global_prompt exists, check if card part matches
+        # If line has no # prompt but global_prompt exists, check if card part matches
         if global_prompt:
-            tab_match = TAB_SPLIT_PATTERN.match(line)
-            if tab_match:
-                copies = int(tab_match.group("copies"))
-                card_name = tab_match.group("name").strip()
-                set_code = tab_match.group("set").strip().upper()
-                collector_number = tab_match.group("number").strip()
+            card_match = CARD_SPLIT_PATTERN.match(line)
+            if card_match:
+                copies = int(card_match.group("copies"))
+                card_name = card_match.group("name").strip()
+                set_code = card_match.group("set").strip().upper()
+                collector_number = card_match.group("number").strip()
 
                 if copies <= 0:
                     errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
@@ -181,7 +180,7 @@ def parse_deck_text(text: str) -> ParseResult:
 
         # If we reached here, the line failed to match the required format
         errors.append(
-            f"Line {idx}: Invalid line format '{line}'. Expected format: 'Copies CardName (set) CollectorNumber\\tprompt' (e.g. '1 Byode, Inverse Sun (PH21) 3\\tAn anime girl dressed like a pixie')"
+            f"Line {idx}: Invalid line format '{line}'. Expected format: 'Copies CardName (set) CollectorNumber # prompt' (e.g. '1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie')"
         )
 
     if errors:

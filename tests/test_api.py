@@ -22,7 +22,7 @@ class TestFastAPIEndpoints(unittest.TestCase):
 
     def test_parse_valid_deck(self):
         payload = {
-            "text": "1 Byode, Inverse Sun (PH21) 3\tAn anime girl dressed like a pixie\n1 All-Seeing Toby (SLD) 2695\tAn anime boy in a library"
+            "text": "1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie\n1 All-Seeing Toby (SLD) 2695 # An anime boy in a library"
         }
         resp = client.post("/api/parse", json=payload)
         self.assertEqual(resp.status_code, 200)
@@ -43,7 +43,7 @@ class TestFastAPIEndpoints(unittest.TestCase):
 
     def test_parse_with_global_prompt(self):
         payload = {
-            "text": "# in cyberpunk futuristic style\n1 Byode, Inverse Sun (PH21) 3\tPixie\n1 All-Seeing Toby (SLD) 2695\tBoy"
+            "text": "# in cyberpunk futuristic style\n1 Byode, Inverse Sun (PH21) 3 # Pixie\n1 All-Seeing Toby (SLD) 2695 # Boy"
         }
         resp = client.post("/api/parse", json=payload)
         self.assertEqual(resp.status_code, 200)
@@ -55,7 +55,7 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertEqual(data["cards"][1]["prompt"], "Boy")
 
     def test_parse_file_with_global_prompt(self):
-        file_content = b"# retro synthwave style\n1 Byode, Inverse Sun (PH21) 3\tPixie\n"
+        file_content = b"# retro synthwave style\n1 Byode, Inverse Sun (PH21) 3 # Pixie\n"
         resp = client.post(
             "/api/parse-file",
             files={"file": ("deck.txt", file_content, "text/plain")}
@@ -205,7 +205,7 @@ class TestFastAPIEndpoints(unittest.TestCase):
 
     def test_cards_and_export_flow(self):
         # 1. Parse sample deck
-        deck = "1 Byode, Inverse Sun (PH21) 3\tAn anime pixie"
+        deck = "1 Byode, Inverse Sun (PH21) 3 # An anime pixie"
         client.post("/api/parse", json={"text": deck})
 
         # 2. Check cards endpoint
@@ -246,7 +246,7 @@ class TestFastAPIEndpoints(unittest.TestCase):
 
     def test_generate_endpoint_concurrency(self):
         # 1. Parse sample deck
-        deck = "1 Byode, Inverse Sun (PH21) 3\tAn anime pixie"
+        deck = "1 Byode, Inverse Sun (PH21) 3 # An anime pixie"
         client.post("/api/parse", json={"text": deck})
 
         # 2. Set provider to gemini

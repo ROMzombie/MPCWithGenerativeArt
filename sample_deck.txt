@@ -1,4 +1,4 @@
 # the theme is "a dancing and singing cartoon purple t-rex"
-1 Byode, Inverse Sun (PH21) 3	holding a sphere of black light
-1 All-Seeing Toby (SLD) 2695	looking over a forest from the deck of a watchtower
-1 Animate Dead (SLD) 2189	hands raised in a dark room with black flame candles around him
+1 Byode, Inverse Sun (PH21) 3 # holding a sphere of black light
+1 All-Seeing Toby (SLD) 2695 # looking over a forest from the deck of a watchtower
+1 Animate Dead (SLD) 2189 # hands raised in a dark room with black flame candles around him

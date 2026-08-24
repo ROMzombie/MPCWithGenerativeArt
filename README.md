@@ -131,29 +131,29 @@ uvicorn backend.app:app --reload --port 8000
 
 ## Deck File Input Format
 
-The application accepts deck lists with tab-separated prompts.
+The application accepts deck lists with `#`-separated prompts.
 
 ### Format Definition
 
 ```text
 # [Optional global style prompt applied to all cards]
-Copies CardName (set) CollectorNumber<TAB>prompt
+Copies CardName (set) CollectorNumber # prompt
 ```
 
 ### Example Input
 
 ```text
 # in watercolor studio ghibli fantasy anime style
-1 Byode, Inverse Sun (PH21) 3	An anime girl dressed like a pixie
-1 All-Seeing Toby (SLD) 2695	An anime boy in a library holding a book
-2 Animate Dead (SLD) 2189	An old man in an anime style holding his hand up with a magic sphere
+1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie
+1 All-Seeing Toby (SLD) 2695 # An anime boy in a library holding a book
+2 Animate Dead (SLD) 2189 # An old man in an anime style holding his hand up with a magic sphere
 ```
 
 - **Copies**: The quantity of cards to print.
 - **CardName**: The card title matching Scryfall.
 - **(set)**: The 3-character or 4-character MTG set code in parentheses.
 - **CollectorNumber**: The card collector number.
-- **prompt**: The prompt for the background image. Separate this prompt from the collector number with a tab character (`\t`).
+- **prompt**: The prompt for the background image. Separate this prompt from the collector number with ` # `.
 - **Global Prompt (`# ...`)**: An optional style prefix at the top of the file. The generator prepends this text to every card prompt.
 
 ---

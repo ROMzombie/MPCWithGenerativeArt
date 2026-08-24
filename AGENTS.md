@@ -34,7 +34,7 @@ MPCWithGenerativeArt is a FastAPI and Vanilla JavaScript web application that ge
 MPCWithGenerativeArt/
 ├── backend/
 │   ├── app.py           # FastAPI application, routes, SSE streaming, settings persistence
-│   ├── parser.py        # Deck text parser (supports tabs, quantities, and global style prompts)
+│   ├── parser.py        # Deck text parser (supports ' # ' separators, quantities, and global style prompts)
 │   ├── scryfall.py      # Scryfall API client with disk caching and rate limiting
 │   ├── generator.py     # Multi-provider async image generators with procedural fallbacks
 │   ├── compositor.py    # CV template matching, text box masking, and 800 DPI bleed scaling
@@ -56,7 +56,7 @@ MPCWithGenerativeArt/
 ## Key Backend Modules
 
 1. **`backend/parser.py`**:
-   - Parses deck lines formatted as `[Copies] [CardName] ([SetCode]) [CollectorNumber]\t[Prompt]`.
+   - Parses deck lines formatted as `[Copies] [CardName] ([SetCode]) [CollectorNumber] # [Prompt]`.
    - Extracts top-level `# [global style prompt]` lines and combines them with card prompts.
 2. **`backend/scryfall.py`**:
    - Queries Scryfall REST API by set code and collector number.

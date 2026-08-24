@@ -2,9 +2,9 @@
  * MPCWithGenerativeArt - Interactive Client Application
  */
 
-const SAMPLE_DECK = `1 Byode, Inverse Sun (PH21) 3\tAn anime girl dressed like a pixie
-1 All-Seeing Toby (SLD) 2695\tAn anime boy in a library holding a book
-1 Animate Dead (SLD) 2189\tAn old man in an anime style holding his hand up with a magic sphere surroundning him`;
+const SAMPLE_DECK = `1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie
+1 All-Seeing Toby (SLD) 2695 # An anime boy in a library holding a book
+1 Animate Dead (SLD) 2189 # An old man in an anime style holding his hand up with a magic sphere surroundning him`;
 
 // Application state
 let currentCards = [];
@@ -27,14 +27,15 @@ function initUI() {
   const btnDone = document.getElementById("btnDone");
   const btnSettings = document.getElementById("btnSettings");
 
-  // Tab key interceptor for deck textarea
+  // Tab key interceptor for deck textarea (inserts " # " prompt separator)
   deckInput.addEventListener("keydown", (e) => {
     if (e.key === "Tab") {
       e.preventDefault();
       const start = deckInput.selectionStart;
       const end = deckInput.selectionEnd;
-      deckInput.value = deckInput.value.substring(0, start) + "\t" + deckInput.value.substring(end);
-      deckInput.selectionStart = deckInput.selectionEnd = start + 1;
+      const insertText = " # ";
+      deckInput.value = deckInput.value.substring(0, start) + insertText + deckInput.value.substring(end);
+      deckInput.selectionStart = deckInput.selectionEnd = start + insertText.length;
       validateDeckInput();
     }
   });

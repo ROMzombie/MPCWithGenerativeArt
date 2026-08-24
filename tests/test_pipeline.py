@@ -29,9 +29,9 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
 
     def test_parser_valid_input(self):
         deck_text = """
-        1 Byode, Inverse Sun (PH21) 3\tAn anime girl dressed like a pixie
-        2 All-Seeing Toby (SLD) 2695\tAn anime boy in a library holding a book
-        4 Animate Dead (SLD) 2189\tAn old man in an anime style holding his hand up with a magic sphere surroundning him
+        1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie
+        2 All-Seeing Toby (SLD) 2695 # An anime boy in a library holding a book
+        4 Animate Dead (SLD) 2189 # An old man in an anime style holding his hand up with a magic sphere surroundning him
         """
         res = parse_deck_text(deck_text)
         self.assertTrue(res.valid)
@@ -51,7 +51,7 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
         self.assertTrue(len(res1.errors) > 0)
 
         # Invalid copies count
-        res2 = parse_deck_text("0 Byode, Inverse Sun (PH21) 3\tAn anime girl")
+        res2 = parse_deck_text("0 Byode, Inverse Sun (PH21) 3 # An anime girl")
         self.assertFalse(res2.valid)
 
         # Empty
@@ -60,8 +60,8 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
 
     def test_parser_global_prompt(self):
         deck_text = """# in watercolor studio ghibli fantasy anime style
-        1 Byode, Inverse Sun (PH21) 3\tAn anime girl dressed like a pixie
-        2 All-Seeing Toby (SLD) 2695\tAn anime boy in a library holding a book
+        1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie
+        2 All-Seeing Toby (SLD) 2695 # An anime boy in a library holding a book
         """
         res = parse_deck_text(deck_text)
         self.assertTrue(res.valid)
@@ -83,9 +83,9 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
         
         # vibrant 8k digital art
         # regular comment
-        1 Byode, Inverse Sun (PH21) 3\tPixie
+        1 Byode, Inverse Sun (PH21) 3 # Pixie
         // another comment
-        1 All-Seeing Toby (SLD) 2695\tBoy with book
+        1 All-Seeing Toby (SLD) 2695 # Boy with book
         """
         res = parse_deck_text(deck_text)
         self.assertTrue(res.valid)
@@ -95,7 +95,7 @@ class TestMPCWithGenerativeArt(unittest.TestCase):
 
         # Comment on first line with // is not global prompt
         deck_no_global = """// just a regular comment
-        1 Byode, Inverse Sun (PH21) 3\tPixie
+        1 Byode, Inverse Sun (PH21) 3 # Pixie
         """
         res_no_global = parse_deck_text(deck_no_global)
         self.assertTrue(res_no_global.valid)
