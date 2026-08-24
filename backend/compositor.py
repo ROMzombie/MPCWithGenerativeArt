@@ -191,6 +191,8 @@ def detect_card_boxes(
     frame_effects: Optional[List[str]] = None,
     layout: Optional[str] = "normal",
     full_art: Optional[bool] = False,
+    security_stamp: Optional[str] = None,
+    rarity: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Detects individual borders of the card rules and statistic text boxes,
@@ -235,45 +237,56 @@ def detect_card_boxes(
     stat_polygon = None
     subtitle_polygon = None
 
+    # Holo stamp detection: Sagas, Classes, and Cases never mask holofoil space.
+    # Standard commons/uncommons do not have a holographic security stamp.
+    has_holo = (
+        not (is_saga or is_class or is_case or is_room or is_battle)
+        and (
+            (security_stamp is not None and security_stamp.lower() not in ["", "none", "arena"])
+            or (rarity and rarity.lower() in ["rare", "mythic", "special", "bonus"])
+            or ("legendary" in t_lower)
+            or ("holofoil" in effects)
+            or ("security_stamp" in effects)
+        )
+    )
+    holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy)) if has_holo else None
+
     if is_saga:
         # Saga vertical chapter layout: left chapters column, right art column, bottom type pill
-        title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+        title_pill = (int(44 * sx), int(50 * sy), int(700 * sx), int(110 * sy))
         title_box = title_pill
-        rules_box = (int(40 * sx), int(108 * sy), int(372 * sx), int(868 * sy))
-        art_box = (int(372 * sx), int(108 * sy), int(704 * sx), int(868 * sy))
-        type_box = (int(42 * sx), int(876 * sy), int(702 * sx), int(932 * sy))
+        rules_box = (int(50 * sx), int(114 * sy), int(372 * sx), int(868 * sy))
+        art_box = (int(372 * sx), int(114 * sy), int(694 * sx), int(868 * sy))
+        type_box = (int(44 * sx), int(876 * sy), int(700 * sx), int(936 * sy))
         stat_box = None
-        holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
     elif is_class or is_case:
         # Class / Case vertical layout: left art column, right level abilities column, bottom type pill
-        title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+        title_pill = (int(44 * sx), int(50 * sy), int(700 * sx), int(110 * sy))
         title_box = title_pill
-        art_box = (int(40 * sx), int(108 * sy), int(372 * sx), int(868 * sy))
-        rules_box = (int(372 * sx), int(108 * sy), int(704 * sx), int(868 * sy))
-        type_box = (int(42 * sx), int(876 * sy), int(702 * sx), int(932 * sy))
+        art_box = (int(50 * sx), int(114 * sy), int(372 * sx), int(868 * sy))
+        rules_box = (int(372 * sx), int(114 * sy), int(694 * sx), int(868 * sy))
+        type_box = (int(44 * sx), int(876 * sy), int(700 * sx), int(936 * sy))
         stat_box = None
-        holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
     elif is_room:
         # Room horizontal dual-door layout inside standard vertical card
-        title_pill = (int(42 * sx), int(488 * sy), int(130 * sx), int(950 * sy))
-        title_box_2 = (int(42 * sx), int(50 * sy), int(130 * sx), int(484 * sy))
+        title_pill = (int(44 * sx), int(488 * sy), int(130 * sx), int(950 * sy))
+        title_box_2 = (int(44 * sx), int(50 * sy), int(130 * sx), int(484 * sy))
         title_box = title_pill
-        rules_box = (int(540 * sx), int(488 * sy), int(704 * sx), int(950 * sy))
-        rules_box_2 = (int(540 * sx), int(50 * sy), int(704 * sx), int(484 * sy))
+        rules_box = (int(540 * sx), int(488 * sy), int(700 * sx), int(950 * sy))
+        rules_box_2 = (int(540 * sx), int(50 * sy), int(700 * sx), int(484 * sy))
         type_box = (int(450 * sx), int(50 * sy), int(530 * sx), int(950 * sy))
         art_box = (int(130 * sx), int(50 * sy), int(450 * sx), int(950 * sy))
         stat_box = None
-        holo_stamp = (int(450 * sx), int(914 * sy), int(530 * sx), int(954 * sy))
         extra_boxes = [
             {"box": title_box_2, "type": "pill"},
             {"box": rules_box_2, "type": "rect"},
         ]
     elif is_battle:
         # Battle - Siege landscape format inside standard vertical card
-        title_pill = (int(42 * sx), int(50 * sy), int(130 * sx), int(896 * sy))
+        title_pill = (int(44 * sx), int(50 * sy), int(130 * sx), int(896 * sy))
         title_box = title_pill
-        type_box = (int(570 * sx), int(590 * sy), int(704 * sx), int(896 * sy))
-        rules_box = (int(570 * sx), int(50 * sy), int(704 * sx), int(586 * sy))
+        type_box = (int(570 * sx), int(590 * sy), int(700 * sx), int(896 * sy))
+        rules_box = (int(570 * sx), int(50 * sy), int(700 * sx), int(586 * sy))
         art_box = (int(130 * sx), int(50 * sy), int(570 * sx), int(950 * sy))
         stat_polygon = [
             (int(640 * sx), int(30 * sy)),
@@ -282,14 +295,12 @@ def detect_card_boxes(
             (int(640 * sx), int(70 * sy)),
         ]
         stat_box = (int(640 * sx), int(20 * sy), int(730 * sx), int(100 * sy))
-        holo_stamp = (int(450 * sx), int(914 * sy), int(536 * sx), int(954 * sy))
     elif is_adventure:
         # Adventure split layout (Left: Adventure Spell Scroll, Right: Creature text box)
-        title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+        title_pill = (int(44 * sx), int(50 * sy), int(700 * sx), int(110 * sy))
         title_box = title_pill
-        type_box = (int(42 * sx), int(576 * sy), int(702 * sx), int(632 * sy))
-        rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
-        holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
+        type_box = (int(44 * sx), int(584 * sy), int(700 * sx), int(644 * sy))
+        rules_box = (int(54 * sx), int(650 * sy), int(690 * sx), int(958 * sy))
         stat_polygon = [
             (int(585 * sx), int(918 * sy)),
             (int(695 * sx), int(918 * sy)),
@@ -306,23 +317,22 @@ def detect_card_boxes(
     else:
         # Standard Card Frame (Creature, Planeswalker, Instant, Sorcery, Enchantment, Artifact, Land)
         # Note: Only name pill (and subtitle if present) is masked; legendary crowns are excluded
-        title_pill = (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
+        title_pill = (int(44 * sx), int(50 * sy), int(700 * sx), int(110 * sy))
         if has_flavor_name:
             subtitle_polygon = [
-                (int(85 * sx), int(94 * sy)),
-                (int(660 * sx), int(94 * sy)),
-                (int(636 * sx), int(138 * sy)),
-                (int(109 * sx), int(138 * sy)),
+                (int(85 * sx), int(104 * sy)),
+                (int(660 * sx), int(104 * sy)),
+                (int(636 * sx), int(144 * sy)),
+                (int(109 * sx), int(144 * sy)),
             ]
-            title_box = (int(42 * sx), int(44 * sy), int(702 * sx), int(138 * sy))
+            title_box = (int(44 * sx), int(50 * sy), int(700 * sx), int(144 * sy))
         else:
             title_box = title_pill
 
-        type_box = (int(42 * sx), int(576 * sy), int(702 * sx), int(632 * sy))
-        holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
+        type_box = (int(44 * sx), int(584 * sy), int(700 * sx), int(644 * sy))
 
         if is_planeswalker:
-            rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
+            rules_box = (int(54 * sx), int(650 * sy), int(690 * sx), int(960 * sy))
             stat_polygon = [
                 (int(604 * sx), int(928 * sy)),
                 (int(654 * sx), int(934 * sy)),
@@ -349,16 +359,16 @@ def detect_card_boxes(
             ]
             stat_box = (int(566 * sx), int(918 * sy), int(708 * sx), int(984 * sy))
             if is_borderless:
-                rules_box = (int(40 * sx), int(626 * sy), int(704 * sx), int(964 * sy))
+                rules_box = (int(50 * sx), int(630 * sy), int(694 * sx), int(960 * sy))
             else:
-                rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
+                rules_box = (int(54 * sx), int(650 * sy), int(690 * sx), int(958 * sy))
         else:
             stat_box = None
             stat_polygon = None
             if is_borderless:
-                rules_box = (int(40 * sx), int(626 * sy), int(704 * sx), int(964 * sy))
+                rules_box = (int(50 * sx), int(630 * sy), int(694 * sx), int(960 * sy))
             else:
-                rules_box = (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
+                rules_box = (int(54 * sx), int(650 * sy), int(690 * sx), int(958 * sy))
 
         if is_station:
             probe_x = int(24 * sx)
@@ -427,20 +437,23 @@ def create_card_exclusion_mask(
     mask = Image.new("L", (cw, ch), 0)
     draw = ImageDraw.Draw(mask)
 
+    pill_radius = max(4, int(28 * sy * s_eff))
+    rules_radius = max(4, int(10 * sx * s_eff))
+
     # 1. Preserve Title Header (Pill + Subtitle Polygon)
-    t_pill = boxes.get("title_pill") or (int(42 * sx), int(44 * sy), int(702 * sx), int(100 * sy))
-    draw.rounded_rectangle(t_pill, radius=max(4, int(24 * sy * s_eff)), fill=255)
+    t_pill = boxes.get("title_pill") or (int(44 * sx), int(50 * sy), int(700 * sx), int(110 * sy))
+    draw.rounded_rectangle(t_pill, radius=pill_radius, fill=255)
     sub_poly = boxes.get("subtitle_polygon")
     if sub_poly:
         draw.polygon(sub_poly, fill=255)
 
     # 2. Preserve Type Line
-    typ = boxes.get("type_box") or (int(42 * sx), int(576 * sy), int(702 * sx), int(632 * sy))
-    draw.rounded_rectangle([typ[0], typ[1], typ[2], typ[3]], radius=max(4, int(24 * sy * s_eff)), fill=255)
+    typ = boxes.get("type_box") or (int(44 * sx), int(584 * sy), int(700 * sx), int(644 * sy))
+    draw.rounded_rectangle([typ[0], typ[1], typ[2], typ[3]], radius=pill_radius, fill=255)
 
     # 3. Preserve Rules Text Box, Station Circles & Holo Stamp Crest
-    rb = boxes.get("rules_box") or (int(40 * sx), int(646 * sy), int(704 * sx), int(964 * sy))
-    draw.rounded_rectangle([rb[0], rb[1], rb[2], rb[3]], radius=max(4, int(8 * sx * s_eff)), fill=255)
+    rb = boxes.get("rules_box") or (int(54 * sx), int(650 * sy), int(690 * sx), int(958 * sy))
+    draw.rounded_rectangle([rb[0], rb[1], rb[2], rb[3]], radius=rules_radius, fill=255)
     for circ in boxes.get("station_circles", []):
         draw.ellipse([circ[0], circ[1], circ[2], circ[3]], fill=255)
     holo = boxes.get("holo_stamp")
@@ -538,23 +551,23 @@ def composite_full_art_card(
 
     # Map all detected boxes to 800 DPI canvas coordinates
     t_pill = map_box(card_boxes.get("title_pill")) or (
-        int(42 * scale_x + ox),
-        int(44 * scale_y + oy),
-        int(702 * scale_x + ox),
-        int(100 * scale_y + oy),
+        int(44 * scale_x + ox),
+        int(50 * scale_y + oy),
+        int(700 * scale_x + ox),
+        int(110 * scale_y + oy),
     )
     sub_poly = map_poly(card_boxes.get("subtitle_polygon"))
     typ = map_box(card_boxes.get("type_box")) or (
-        int(42 * scale_x + ox),
-        int(576 * scale_y + oy),
-        int(702 * scale_x + ox),
-        int(632 * scale_y + oy),
+        int(44 * scale_x + ox),
+        int(584 * scale_y + oy),
+        int(700 * scale_x + ox),
+        int(644 * scale_y + oy),
     )
     rb = map_box(card_boxes.get("rules_box")) or (
-        int(40 * scale_x + ox),
-        int(646 * scale_y + oy),
-        int(704 * scale_x + ox),
-        int(964 * scale_y + oy),
+        int(54 * scale_x + ox),
+        int(650 * scale_y + oy),
+        int(690 * scale_x + ox),
+        int(958 * scale_y + oy),
     )
     sb = map_box(card_boxes.get("stat_box"))
     stat_poly = map_poly(card_boxes.get("stat_polygon"))
@@ -577,8 +590,8 @@ def composite_full_art_card(
     )
 
     composite = art_full.copy()
-    pill_radius = max(4, int(24 * (eff_card_h / 1040.0)))
-    rules_radius = max(4, int(8 * (eff_card_w / 745.0)))
+    pill_radius = max(4, int(28 * (eff_card_h / 1040.0)))
+    rules_radius = max(4, int(10 * (eff_card_w / 745.0)))
     stat_radius = max(4, int(26 * (eff_card_h / 1040.0)))
 
     # 1. Composite Title Header (Pill + Subtitle Polygon)

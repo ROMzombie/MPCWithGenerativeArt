@@ -212,6 +212,8 @@ async def process_single_card(card: CardItem):
             frame_effects=card_data.frame_effects,
             layout=card_data.layout,
             full_art=card_data.full_art,
+            security_stamp=card_data.security_stamp,
+            rarity=card_data.rarity,
         )
         card.art_box = card_boxes.get("art_box")
         card.rules_box = card_boxes.get("rules_box")

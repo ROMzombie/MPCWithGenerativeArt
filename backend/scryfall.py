@@ -37,6 +37,8 @@ class ScryfallCardData:
         frame_effects: Optional[list] = None,
         full_art: Optional[bool] = False,
         promo_types: Optional[list] = None,
+        security_stamp: Optional[str] = None,
+        rarity: Optional[str] = None,
         cached_png_path: Optional[str] = None,
         cached_art_path: Optional[str] = None,
     ):
@@ -55,6 +57,8 @@ class ScryfallCardData:
         self.frame_effects = frame_effects or []
         self.full_art = bool(full_art)
         self.promo_types = promo_types or []
+        self.security_stamp = security_stamp
+        self.rarity = rarity or "common"
         self.cached_png_path = cached_png_path
         self.cached_art_path = cached_art_path
 
@@ -164,6 +168,8 @@ class ScryfallClient:
                 frame_effects=card_json.get("frame_effects", []),
                 full_art=card_json.get("full_art", False),
                 promo_types=card_json.get("promo_types", []),
+                security_stamp=card_json.get("security_stamp"),
+                rarity=card_json.get("rarity", "common"),
                 cached_png_path=str(png_cache_path),
                 cached_art_path=str(art_cache_path) if art_cache_path.exists() else None,
             )

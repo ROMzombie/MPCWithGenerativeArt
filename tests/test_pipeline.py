@@ -182,12 +182,12 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         rx1, ry1, rx2, ry2 = boxes["rules_box"]
         self.assertTrue(0 <= rx1 < rx2 <= cw)
         self.assertTrue(int(ch * 0.5) < ry1 < ry2 <= ch)
-        self.assertGreaterEqual(ry2, int(960 * (ch / 1040.0)))
+        self.assertGreaterEqual(ry2, int(950 * (ch / 1040.0)))
 
         # Title pill bounds must preserve rounded end caps and beveled shadows
         tp1, tp2, tp3, tp4 = boxes["title_pill"]
-        self.assertLessEqual(tp1, int(42 * (cw / 745.0)))
-        self.assertGreaterEqual(tp3, int(700 * (cw / 745.0)))
+        self.assertLessEqual(tp1, int(45 * (cw / 745.0)))
+        self.assertGreaterEqual(tp3, int(695 * (cw / 745.0)))
 
         # Universewalker Byode has statistic/loyalty box and polygon
         self.assertIsNotNone(boxes["stat_box"])
@@ -276,10 +276,11 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
             ekthi_img,
             type_line=ekthi_data.type_line,
             layout=ekthi_data.layout,
+            rarity=ekthi_data.rarity,
         )
         self.assertEqual(len(ekthi_boxes["station_circles"]), 0)
         self.assertIsNotNone(ekthi_boxes["stat_box"])
-        self.assertGreaterEqual(ekthi_boxes["rules_box"][3], int(960 * (ekthi_img.height / 1040.0)))
+        self.assertGreaterEqual(ekthi_boxes["rules_box"][3], int(950 * (ekthi_img.height / 1040.0)))
         self.assertGreaterEqual(ekthi_boxes["stat_box"][3], int(980 * (ekthi_img.height / 1040.0)))
 
         # 4. Composite station card and verify print dimensions
@@ -379,19 +380,23 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         # 1. Saga (Elspeth Conquers Death - THB 13)
         saga_data = await scryfall_client.get_card("thb", "13", "Elspeth Conquers Death")
         saga_img = Image.open(saga_data.cached_png_path).convert("RGB")
-        saga_boxes = detect_card_boxes(saga_img, type_line=saga_data.type_line, layout=saga_data.layout)
+        saga_boxes = detect_card_boxes(saga_img, type_line=saga_data.type_line, layout=saga_data.layout, rarity=saga_data.rarity)
         # Saga type line is at bottom (y > 850)
         self.assertGreater(saga_boxes["type_box"][1], int(850 * (saga_img.height / 1040.0)))
         # Saga rules box is left column (width < 400)
         self.assertLess(saga_boxes["rules_box"][2], int(400 * (saga_img.width / 745.0)))
+        # Sagas do not mask holo stamp
+        self.assertIsNone(saga_boxes["holo_stamp"])
 
         # 2. Class (Paladin Class - AFR 29)
         class_data = await scryfall_client.get_card("afr", "29", "Paladin Class")
         class_img = Image.open(class_data.cached_png_path).convert("RGB")
-        class_boxes = detect_card_boxes(class_img, type_line=class_data.type_line, layout=class_data.layout)
+        class_boxes = detect_card_boxes(class_img, type_line=class_data.type_line, layout=class_data.layout, rarity=class_data.rarity)
         # Class rules box is right column (x1 > 350)
         self.assertGreater(class_boxes["rules_box"][0], int(350 * (class_img.width / 745.0)))
         self.assertGreater(class_boxes["type_box"][1], int(850 * (class_img.height / 1040.0)))
+        # Classes do not mask holo stamp
+        self.assertIsNone(class_boxes["holo_stamp"])
 
         # 3. Room (Dollmaker's Shop // Porcelain Gallery - DSK 4)
         room_data = await scryfall_client.get_card("dsk", "4", "Dollmaker's Shop // Porcelain Gallery")

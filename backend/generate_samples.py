@@ -391,6 +391,8 @@ async def generate_all_samples(
             frame_effects=card_data.frame_effects,
             layout=card_data.layout,
             full_art=card_data.full_art,
+            security_stamp=card_data.security_stamp,
+            rarity=card_data.rarity,
         )
 
         # Generate custom background art
