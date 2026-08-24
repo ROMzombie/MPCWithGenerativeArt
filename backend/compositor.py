@@ -233,6 +233,7 @@ def detect_card_boxes(
 
     # 2. Specialized Frame Geometry Detection
     extra_boxes: List[Dict[str, Any]] = []
+    extra_polygons: List[List[Tuple[int, int]]] = []
     station_circles: List[Tuple[int, int, int, int]] = []
     loyalty_polygons: List[List[Tuple[int, int]]] = []
     stat_polygon = None
@@ -253,19 +254,32 @@ def detect_card_boxes(
     holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy)) if has_holo else None
 
     if is_saga:
-        # Saga vertical chapter layout: left chapters column (preserving left hexagon badges), right art column, bottom type pill
+        # Saga vertical chapter layout:
+        # 1. Main parchment rules text box: x=54..372, y=120..868 (prevents top & bottom left bleed)
+        # 2. Left chapter bookmark ribbon polygon: x=33..90, y=240..842 (preserves chapter hexagon badges)
+        # 3. Right art column & bottom type pill
         title_pill = (int(46 * sx), int(50 * sy), int(698 * sx), int(110 * sy))
         title_box = title_pill
-        rules_box = (int(36 * sx), int(120 * sy), int(372 * sx), int(868 * sy))
+        rules_box = (int(54 * sx), int(120 * sy), int(372 * sx), int(868 * sy))
         art_box = (int(372 * sx), int(120 * sy), int(694 * sx), int(868 * sy))
         type_box = (int(44 * sx), int(880 * sy), int(700 * sx), int(936 * sy))
         stat_box = None
+        extra_polygons = [
+            [
+                (int(54 * sx), int(260 * sy)),
+                (int(33 * sx), int(290 * sy)),
+                (int(33 * sx), int(805 * sy)),
+                (int(62 * sx), int(842 * sy)),
+                (int(90 * sx), int(805 * sy)),
+                (int(90 * sx), int(240 * sy)),
+            ]
+        ]
     elif is_class:
-        # Class vertical layout: left art column, right level abilities column, bottom type pill
+        # Class vertical layout: left art column, right level abilities column (x=372..688 to eliminate right bleed), bottom type pill
         title_pill = (int(46 * sx), int(50 * sy), int(698 * sx), int(110 * sy))
         title_box = title_pill
         art_box = (int(50 * sx), int(120 * sy), int(372 * sx), int(868 * sy))
-        rules_box = (int(372 * sx), int(120 * sy), int(694 * sx), int(868 * sy))
+        rules_box = (int(372 * sx), int(120 * sy), int(688 * sx), int(868 * sy))
         type_box = (int(44 * sx), int(880 * sy), int(700 * sx), int(936 * sy))
         stat_box = None
     elif is_case:
@@ -484,6 +498,7 @@ def detect_card_boxes(
         "station_circles": station_circles,
         "holo_stamp": holo_stamp,
         "extra_boxes": extra_boxes,
+        "extra_polygons": extra_polygons,
         "title_box": title_box,
         "title_pill": title_pill,
         "subtitle_polygon": subtitle_polygon,
@@ -538,6 +553,8 @@ def create_card_exclusion_mask(
         draw.ellipse([circ[0], circ[1], circ[2], circ[3]], fill=255)
     for lpoly in boxes.get("loyalty_polygons", []):
         draw.polygon(lpoly, fill=255)
+    for epoly in boxes.get("extra_polygons", []):
+        draw.polygon(epoly, fill=255)
     holo = boxes.get("holo_stamp")
     if holo:
         draw.ellipse([holo[0], holo[1], holo[2], holo[3]], fill=255)
@@ -654,6 +671,7 @@ def composite_full_art_card(
     sb = map_box(card_boxes.get("stat_box"))
     stat_poly = map_poly(card_boxes.get("stat_polygon"))
     loyalty_polys = [map_poly(lp) for lp in card_boxes.get("loyalty_polygons", []) if lp]
+    extra_polys = [map_poly(ep) for ep in card_boxes.get("extra_polygons", []) if ep]
     station_circles = map_circles(card_boxes.get("station_circles"))
     holo_stamp = map_box(card_boxes.get("holo_stamp"))
     is_borderless = card_boxes.get("is_borderless", False)
@@ -754,6 +772,8 @@ def composite_full_art_card(
             rbd.ellipse([circ[0], circ[1], circ[2], circ[3]], fill=255)
         for lp in loyalty_polys:
             rbd.polygon(lp, fill=255)
+        for ep in extra_polys:
+            rbd.polygon(ep, fill=255)
         if holo_stamp:
             rbd.ellipse([holo_stamp[0], holo_stamp[1], holo_stamp[2], holo_stamp[3]], fill=255)
         rb_mask = rb_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
