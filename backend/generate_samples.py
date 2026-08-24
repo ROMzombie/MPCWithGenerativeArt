@@ -321,7 +321,7 @@ SAMPLE_CARD_VARIANTS: List[Dict[str, Any]] = [
     {
         "id": "station_3_badges",
         "set_code": "eoe",
-        "collector_number": "239",
+        "collector_number": "99",
         "card_name": "Entropic Battlecruiser",
         "category": "Station Card (3 Circle Badges)",
         "description": "Spacecraft Station card featuring three edge-protruding Station badges (8+, 14+, and 20+) and Power/Toughness box.",
@@ -395,14 +395,50 @@ async def generate_all_samples(
             rarity=card_data.rarity,
         )
 
+        # Layout-specific art sizing, rotation, and focal positioning
+        t_lower = (card_data.type_line or "").lower()
+        l_lower = (card_data.layout or "").lower()
+        is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
+        is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
+        is_saga = ("saga" in t_lower) or (l_lower == "saga")
+        is_class_or_case = any(k in t_lower for k in ["class", "case"]) or (l_lower in ["class", "case"])
+
+        target_w = 2184
+        target_h = 2968
+
+        if is_battle or is_room:
+            gen_w = max(target_w, target_h)
+            gen_h = max(target_w, target_h)
+            focal_pt = (gen_w // 2, gen_h // 2)
+        elif is_saga:
+            gen_w = target_w
+            gen_h = target_h
+            focal_pt = (int(target_w * 0.72), target_h // 2)
+        elif is_class_or_case:
+            gen_w = target_w
+            gen_h = target_h
+            focal_pt = (int(target_w * 0.28), target_h // 2)
+        else:
+            gen_w = target_w
+            gen_h = target_h
+            focal_pt = None
+
         # Generate custom background art
         art_img = await generator.generate_art(
             prompt=prompt,
             card_name=name,
-            target_width=2184,
-            target_height=2968,
+            target_width=gen_w,
+            target_height=gen_h,
             colors=card_data.colors,
+            focal_center=focal_pt,
         )
+
+        if is_battle or is_room:
+            # Rotate 90° CCW (left) and center crop to standard (2184, 2968)
+            art_rot = art_img.rotate(90, expand=True)
+            crop_left = max(0, (art_rot.width - target_w) // 2)
+            crop_top = max(0, (art_rot.height - target_h) // 2)
+            art_img = art_rot.crop((crop_left, crop_top, crop_left + target_w, crop_top + target_h))
 
         # Composite print-ready 800 DPI card
         composite_800dpi = composite_card(

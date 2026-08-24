@@ -384,7 +384,7 @@ This document showcases full-art generative card compositing across all supporte
 
 ### Station Card (3 Circle Badges)
 
-**Card:** `Entropic Battlecruiser` (`EOE` #239)  
+**Card:** `Entropic Battlecruiser` (`EOE` #99)  
 **Description:** Spacecraft Station card featuring three edge-protruding Station badges (8+, 14+, and 20+) and Power/Toughness box.  
 **Sample Prompt:** *"Ominous dark matter battlecruiser charging catastrophic vortex beams across nebulas"*
 

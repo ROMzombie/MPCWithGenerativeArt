@@ -250,16 +250,47 @@ async def process_single_card(card: CardItem):
             generator = get_generator(state.provider, api_key=state.openai_api_key)
         else:
             generator = get_generator(state.provider)
+        t_lower = (card_data.type_line or "").lower()
+        l_lower = (card_data.layout or "").lower()
+        is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
+        is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
+        is_saga = ("saga" in t_lower) or (l_lower == "saga")
+        is_class_or_case = any(k in t_lower for k in ["class", "case"]) or (l_lower in ["class", "case"])
+
+        if is_battle or is_room:
+            # Landscape layout: generate large square canvas, rotate 90° CCW (left), center-crop to (cw, ch)
+            gen_w = max(cw, ch)
+            gen_h = max(cw, ch)
+            focal_pt = (gen_w // 2, gen_h // 2)
+        elif is_saga:
+            gen_w = cw
+            gen_h = ch
+            focal_pt = (int(cw * 0.72), ch // 2)
+        elif is_class_or_case:
+            gen_w = cw
+            gen_h = ch
+            focal_pt = (int(cw * 0.28), ch // 2)
+        else:
+            gen_w = cw
+            gen_h = ch
+            focal_pt = (art_cx, art_cy)
 
         generated_art = await generator.generate_art(
             prompt=effective_prompt,
             card_name=card.card_name,
-            target_width=cw,
-            target_height=ch,
+            target_width=gen_w,
+            target_height=gen_h,
             colors=card_data.colors,
             flavor_name=card_data.flavor_name,
-            focal_center=(art_cx, art_cy),
+            focal_center=focal_pt,
         )
+
+        if is_battle or is_room:
+            # Rotate 90° CCW (left) and center crop to (cw, ch)
+            art_rot = generated_art.rotate(90, expand=True)
+            crop_left = max(0, (art_rot.width - cw) // 2)
+            crop_top = max(0, (art_rot.height - ch) // 2)
+            generated_art = art_rot.crop((crop_left, crop_top, crop_left + cw, crop_top + ch))
 
         # 4. Composite full-art background with masked card text boxes and upscale to 800 DPI MPC dimensions
         card.status = "compositing"

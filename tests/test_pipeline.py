@@ -186,13 +186,14 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
 
         # Title pill bounds must preserve rounded end caps and beveled shadows
         tp1, tp2, tp3, tp4 = boxes["title_pill"]
-        self.assertLessEqual(tp1, int(45 * (cw / 745.0)))
+        self.assertLessEqual(tp1, int(47 * (cw / 745.0)))
         self.assertGreaterEqual(tp3, int(695 * (cw / 745.0)))
 
-        # Universewalker Byode has statistic/loyalty box and polygon
+        # Universewalker Byode has statistic/loyalty box, polygon, and individual loyalty ability shields
         self.assertIsNotNone(boxes["stat_box"])
         self.assertIsNotNone(boxes["stat_polygon"])
         self.assertEqual(len(boxes["stat_polygon"]), 8)
+        self.assertGreaterEqual(len(boxes.get("loyalty_polygons", [])), 1)
         sx1, sy1, sx2, sy2 = boxes["stat_box"]
         self.assertTrue(0 < sx1 < sx2 <= cw)
         self.assertTrue(int(ch * 0.8) < sy1 < sy2 <= ch)
@@ -409,7 +410,7 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         battle_img = Image.open(battle_data.cached_png_path).convert("RGB")
         battle_boxes = detect_card_boxes(battle_img, type_line=battle_data.type_line, layout=battle_data.layout)
         self.assertIsNotNone(battle_boxes["stat_polygon"])
-        self.assertEqual(len(battle_boxes["stat_polygon"]), 4)
+        self.assertEqual(len(battle_boxes["stat_polygon"]), 16)
 
         # 5. Adventure (Giant Killer // Chop Down - ELD 14)
         adv_data = await scryfall_client.get_card("eld", "14", "Giant Killer // Chop Down")
