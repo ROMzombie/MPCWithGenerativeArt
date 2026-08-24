@@ -29,6 +29,8 @@ This document showcases full-art generative card compositing across all supporte
 - [Station Card (2 Circle Badges) — Dawnsire, Sunstar Dreadnought](#station-card-2-circle-badges)
 - [Station Card (3 Circle Badges) — Entropic Battlecruiser](#station-card-3-circle-badges)
 - [Adventure (Creature / Spell) — Giant Killer // Chop Down](#adventure-creature--spell)
+- [Split (Without Fuse) — Fire // Ice](#split-without-fuse)
+- [Split (With Fuse) — Wear // Tear](#split-with-fuse)
 
 ---
 
@@ -418,6 +420,45 @@ This document showcases full-art generative card compositing across all supporte
 - Left Adventure spell scroll (Chop Down 2W Instant)
 - Right creature rules text box
 - Bottom-right Power/Toughness box (1/2)
+
+---
+
+### Split (Without Fuse)
+
+**Card:** `Fire // Ice` (`DMR` #215)  
+**Description:** Dual-spell split card layout featuring two horizontal spells stacked vertically with separate title bars, type lines, and rules text boxes.  
+**Sample Prompt:** *"Elemental clash of roaring searing crimson flames and crystalline azure glaciers colliding in tempest"*
+
+<p align="center">
+  <img src="images/split_no_fuse_thumb.jpg" alt="Fire // Ice Sample" width="400" />
+</p>
+
+**Key Frame Elements Preserved:**
+- Top spell title and type pill (Ice 1U Instant)
+- Top spell rules text box (Tap target permanent. Draw a card.)
+- Bottom spell title and type pill (Fire 1R Instant)
+- Bottom spell rules text box (Fire deals 2 damage divided...)
+- Dual-art full-frame background rotated 90° CCW
+
+---
+
+### Split (With Fuse)
+
+**Card:** `Wear // Tear` (`DGM` #135)  
+**Description:** Fuse split card layout with connected title and type pillars, dual spell rules boxes, and tall vertical Fuse ability text pill on the right.  
+**Sample Prompt:** *"Shattering radiant celestial armor and glowing arcane weapons disintegrating into molten embers and divine light"*
+
+<p align="center">
+  <img src="images/split_fuse_thumb.jpg" alt="Wear // Tear Sample" width="400" />
+</p>
+
+**Key Frame Elements Preserved:**
+- Top spell title and type pillar (Tear W Instant)
+- Bottom spell title and type pillar (Wear 1R Instant)
+- Central diamond bridges connecting title and type columns
+- Dual rules text boxes (Destroy target artifact / enchantment)
+- Full-height vertical Fuse ability text capsule on right
+- Dual-art full-frame background rotated 90° CCW
 
 ---
 

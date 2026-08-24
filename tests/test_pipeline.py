@@ -419,7 +419,35 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(adv_boxes["stat_polygon"])
         self.assertEqual(len(adv_boxes["stat_polygon"]), 10)
 
-        # 6. Composite all special layouts and verify 800 DPI outputs
+        # 6. Split Without Fuse (Fire // Ice - DMR 215)
+        fire_data = await scryfall_client.get_card("dmr", "215", "Fire // Ice")
+        fire_img = Image.open(fire_data.cached_png_path).convert("RGB")
+        fire_boxes = detect_card_boxes(
+            fire_img,
+            type_line=fire_data.type_line,
+            layout=fire_data.layout,
+            card_name=fire_data.name,
+            keywords=fire_data.keywords,
+            oracle_text=fire_data.oracle_text,
+        )
+        self.assertGreaterEqual(len(fire_boxes["extra_boxes"]), 3)
+        self.assertIsNone(fire_boxes["holo_stamp"])
+
+        # 7. Split With Fuse (Wear // Tear - DGM 135)
+        wear_data = await scryfall_client.get_card("dgm", "135", "Wear // Tear")
+        wear_img = Image.open(wear_data.cached_png_path).convert("RGB")
+        wear_boxes = detect_card_boxes(
+            wear_img,
+            type_line=wear_data.type_line,
+            layout=wear_data.layout,
+            card_name=wear_data.name,
+            keywords=wear_data.keywords,
+            oracle_text=wear_data.oracle_text,
+        )
+        self.assertGreaterEqual(len(wear_boxes["extra_boxes"]), 5)
+        self.assertIsNone(wear_boxes["holo_stamp"])
+
+        # 8. Composite all special layouts and verify 800 DPI outputs
         gen = MockProceduralGenerator()
         for c_img, c_boxes, c_name in [
             (saga_img, saga_boxes, "Elspeth Conquers Death"),
@@ -427,6 +455,8 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
             (room_img, room_boxes, "Dollmaker's Shop // Porcelain Gallery"),
             (battle_img, battle_boxes, "Invasion of Gobakhan"),
             (adv_img, adv_boxes, "Giant Killer // Chop Down"),
+            (fire_img, fire_boxes, "Fire // Ice"),
+            (wear_img, wear_boxes, "Wear // Tear"),
         ]:
             art = await gen.generate_art("test art", c_name, c_img.width, c_img.height)
             comp = composite_card(c_img, art, card_boxes=c_boxes)

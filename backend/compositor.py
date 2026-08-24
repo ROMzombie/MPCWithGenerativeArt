@@ -193,12 +193,15 @@ def detect_card_boxes(
     full_art: Optional[bool] = False,
     security_stamp: Optional[str] = None,
     rarity: Optional[str] = None,
+    keywords: Optional[List[str]] = None,
+    oracle_text: Optional[str] = None,
+    card_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Detects individual borders of the card rules and statistic text boxes,
     along with art box, title header (and subtitle banner if present), and type line.
     Specifically detects individual station circle badges for cards with the Station mechanic.
-    Adapts dynamically to standard, planeswalker, borderless, showcase, and inverted card layouts.
+    Adapts dynamically to standard, planeswalker, borderless, showcase, rooms, and split cards (with/without Fuse).
     """
     cw, ch = card_img.size
     sx = cw / 745.0
@@ -209,12 +212,19 @@ def detect_card_boxes(
 
     t_lower = (type_line or "").lower()
     l_lower = (layout or "").lower()
+    c_lower = (card_name or "").lower()
     effects = [str(e).lower() for e in (frame_effects or [])]
+    k_lower = [str(k).lower() for k in (keywords or [])]
+    o_lower = (oracle_text or "").lower()
 
     is_saga = (l_lower == "saga") or ("saga" in t_lower)
     is_class = (l_lower == "class") or ("class" in t_lower)
     is_case = (l_lower == "case") or ("case" in t_lower)
     is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
+    is_split = (not is_room) and (
+        (l_lower == "split")
+        or ("//" in c_lower and any(kw in t_lower for kw in ["instant", "sorcery", "spell"]))
+    )
     is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
     is_adventure = (l_lower == "adventure") or ("adventure" in t_lower) or ("adventure" in effects)
     is_planeswalker = "walker" in t_lower
@@ -239,10 +249,10 @@ def detect_card_boxes(
     stat_polygon = None
     subtitle_polygon = None
 
-    # Holo stamp detection: Sagas, Classes, Cases, Rooms, and Battles never mask holofoil space.
+    # Holo stamp detection: Sagas, Classes, Cases, Rooms, Split cards, and Battles never mask holofoil space.
     # Standard commons/uncommons do not have a holographic security stamp.
     has_holo = (
-        not (is_saga or is_class or is_case or is_room or is_battle)
+        not (is_saga or is_class or is_case or is_room or is_split or is_battle)
         and (
             (security_stamp is not None and security_stamp.lower() not in ["", "none", "arena"])
             or (rarity and rarity.lower() in ["rare", "mythic", "special", "bonus"])
@@ -291,20 +301,66 @@ def detect_card_boxes(
         type_box = (int(44 * sx), int(880 * sy), int(700 * sx), int(936 * sy))
         stat_box = None
     elif is_room:
-        # Room dual-door layout inside standard vertical card
-        # Left Door (Dollmaker's Shop): vertical title pill at bottom-left, rules box at bottom-right
-        # Right Door (Porcelain Gallery): vertical title pill at top-left, rules box at top-right
+        # Room dual-door layout inside standard vertical card:
+        # Left Door (bottom): vertical title pill at bottom-left, rules box at bottom-right
+        # Right Door (top): vertical title pill at top-left, rules box at top-right
         # Vertical Type line (Enchantment — Room) at bottom-center. Central reminder text is excluded from mask.
-        title_pill = (int(44 * sx), int(530 * sy), int(104 * sx), int(970 * sy))
+        title_pill = (int(35 * sx), int(515 * sy), int(140 * sx), int(965 * sy))
         title_box = title_pill
-        type_box = (int(392 * sx), int(530 * sy), int(442 * sx), int(970 * sy))
-        rules_box = (int(540 * sx), int(530 * sy), int(700 * sx), int(970 * sy))
-        art_box = (int(104 * sx), int(50 * sy), int(392 * sx), int(990 * sy))
+        type_box = (int(440 * sx), int(515 * sy), int(500 * sx), int(965 * sy))
+        rules_box = (int(500 * sx), int(515 * sy), int(665 * sx), int(965 * sy))
+        art_box = (int(140 * sx), int(44 * sy), int(440 * sx), int(965 * sy))
         stat_box = None
         extra_boxes = [
-            {"box": (int(44 * sx), int(70 * sy), int(104 * sx), int(510 * sy)), "type": "pill"},
-            {"box": (int(540 * sx), int(70 * sy), int(700 * sx), int(510 * sy)), "type": "rect"},
+            {"box": (int(35 * sx), int(44 * sy), int(140 * sx), int(490 * sy)), "type": "pill"},
+            {"box": (int(440 * sx), int(44 * sy), int(500 * sx), int(100 * sy)), "type": "pill"},
+            {"box": (int(500 * sx), int(44 * sy), int(665 * sx), int(490 * sy)), "type": "rect"},
         ]
+    elif is_split:
+        # Split card layout (Two variants: With Fuse and Without Fuse)
+        has_fuse = (
+            ("fuse" in k_lower)
+            or ("fuse" in (security_stamp or "").lower())
+            or ("fuse" in o_lower)
+            or any("fuse" in f for f in effects)
+        )
+        if not has_fuse and card_img is not None:
+            # Check right-middle probe on card frame
+            probe_p = card_img.getpixel((int(635 * sx), int(505 * sy)))
+            if sum(probe_p[:3]) / 3.0 > 80:
+                has_fuse = True
+
+        if has_fuse:
+            # Split card WITH Fuse:
+            title_pill = (int(35 * sx), int(510 * sy), int(140 * sx), int(965 * sy))
+            title_box = title_pill
+            type_box = (int(440 * sx), int(510 * sy), int(500 * sx), int(965 * sy))
+            rules_box = (int(500 * sx), int(515 * sy), int(610 * sx), int(965 * sy))
+            art_box = (int(140 * sx), int(44 * sy), int(440 * sx), int(965 * sy))
+            extra_boxes = [
+                # Top half components
+                {"box": (int(35 * sx), int(44 * sy), int(140 * sx), int(495 * sy)), "type": "pill"},
+                {"box": (int(440 * sx), int(44 * sy), int(500 * sx), int(495 * sy)), "type": "pill"},
+                {"box": (int(500 * sx), int(44 * sy), int(610 * sx), int(490 * sy)), "type": "rect"},
+                # Center connection bridges
+                {"box": (int(35 * sx), int(485 * sy), int(140 * sx), int(520 * sy)), "type": "rect"},
+                {"box": (int(440 * sx), int(485 * sy), int(500 * sx), int(520 * sy)), "type": "rect"},
+                # Fuse full-height pill on right
+                {"box": (int(610 * sx), int(44 * sy), int(665 * sx), int(965 * sy)), "type": "pill"},
+            ]
+        else:
+            # Split card WITHOUT Fuse:
+            title_pill = (int(35 * sx), int(515 * sy), int(140 * sx), int(965 * sy))
+            title_box = title_pill
+            type_box = (int(440 * sx), int(515 * sy), int(500 * sx), int(965 * sy))
+            rules_box = (int(500 * sx), int(515 * sy), int(665 * sx), int(965 * sy))
+            art_box = (int(140 * sx), int(44 * sy), int(440 * sx), int(965 * sy))
+            extra_boxes = [
+                {"box": (int(35 * sx), int(44 * sy), int(140 * sx), int(490 * sy)), "type": "pill"},
+                {"box": (int(440 * sx), int(44 * sy), int(500 * sx), int(490 * sy)), "type": "pill"},
+                {"box": (int(500 * sx), int(44 * sy), int(665 * sx), int(490 * sy)), "type": "rect"},
+            ]
+        stat_box = None
     elif is_battle:
         # Battle - Siege landscape format inside standard vertical card
         # Left vertical title column, vertical type line, single continuous rules text box, and 8-pointed defense star

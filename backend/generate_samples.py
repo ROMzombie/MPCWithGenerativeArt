@@ -351,6 +351,39 @@ SAMPLE_CARD_VARIANTS: List[Dict[str, Any]] = [
             "Bottom-right Power/Toughness box (1/2)",
         ],
     },
+    {
+        "id": "split_no_fuse",
+        "set_code": "dmr",
+        "collector_number": "215",
+        "card_name": "Fire // Ice",
+        "category": "Split (Without Fuse)",
+        "description": "Dual-spell split card layout featuring two horizontal spells stacked vertically with separate title bars, type lines, and rules text boxes.",
+        "prompt": "Elemental clash of roaring searing crimson flames and crystalline azure glaciers colliding in tempest",
+        "key_elements": [
+            "Top spell title and type pill (Ice 1U Instant)",
+            "Top spell rules text box (Tap target permanent. Draw a card.)",
+            "Bottom spell title and type pill (Fire 1R Instant)",
+            "Bottom spell rules text box (Fire deals 2 damage divided...)",
+            "Dual-art full-frame background rotated 90° CCW",
+        ],
+    },
+    {
+        "id": "split_fuse",
+        "set_code": "dgm",
+        "collector_number": "135",
+        "card_name": "Wear // Tear",
+        "category": "Split (With Fuse)",
+        "description": "Fuse split card layout with connected title and type pillars, dual spell rules boxes, and tall vertical Fuse ability text pill on the right.",
+        "prompt": "Shattering radiant celestial armor and glowing arcane weapons disintegrating into molten embers and divine light",
+        "key_elements": [
+            "Top spell title and type pillar (Tear W Instant)",
+            "Bottom spell title and type pillar (Wear 1R Instant)",
+            "Central diamond bridges connecting title and type columns",
+            "Dual rules text boxes (Destroy target artifact / enchantment)",
+            "Full-height vertical Fuse ability text capsule on right",
+            "Dual-art full-frame background rotated 90° CCW",
+        ],
+    },
 ]
 
 
@@ -393,20 +426,28 @@ async def generate_all_samples(
             full_art=card_data.full_art,
             security_stamp=card_data.security_stamp,
             rarity=card_data.rarity,
+            keywords=card_data.keywords,
+            oracle_text=card_data.oracle_text,
+            card_name=card_data.name,
         )
 
         # Layout-specific art sizing, rotation, and focal positioning
         t_lower = (card_data.type_line or "").lower()
         l_lower = (card_data.layout or "").lower()
+        c_lower = (card_data.name or "").lower()
         is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
         is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
+        is_split = (not is_room) and (
+            (l_lower == "split")
+            or ("//" in c_lower and any(kw in t_lower for kw in ["instant", "sorcery", "spell"]))
+        )
         is_saga = ("saga" in t_lower) or (l_lower == "saga")
         is_class_or_case = any(k in t_lower for k in ["class", "case"]) or (l_lower in ["class", "case"])
 
         target_w = 2184
         target_h = 2968
 
-        if is_battle or is_room:
+        if is_battle or is_room or is_split:
             gen_w = max(target_w, target_h)
             gen_h = max(target_w, target_h)
             focal_pt = (gen_w // 2, gen_h // 2)
@@ -433,7 +474,7 @@ async def generate_all_samples(
             focal_center=focal_pt,
         )
 
-        if is_battle or is_room:
+        if is_battle or is_room or is_split:
             # Rotate 90° CCW (left) and center crop to standard (2184, 2968)
             art_rot = art_img.rotate(90, expand=True)
             crop_left = max(0, (art_rot.width - target_w) // 2)

@@ -39,6 +39,8 @@ class ScryfallCardData:
         promo_types: Optional[list] = None,
         security_stamp: Optional[str] = None,
         rarity: Optional[str] = None,
+        keywords: Optional[list] = None,
+        oracle_text: Optional[str] = None,
         cached_png_path: Optional[str] = None,
         cached_art_path: Optional[str] = None,
     ):
@@ -50,15 +52,17 @@ class ScryfallCardData:
         self.art_crop_url = art_crop_url
         self.flavor_name = flavor_name
         self.colors = colors or []
-        self.mana_cost = mana_cost or ""
-        self.type_line = type_line or ""
+        self.mana_cost = mana_cost
+        self.type_line = type_line
         self.layout = layout
-        self.border_color = border_color or "black"
+        self.border_color = border_color
         self.frame_effects = frame_effects or []
-        self.full_art = bool(full_art)
+        self.full_art = full_art
         self.promo_types = promo_types or []
         self.security_stamp = security_stamp
-        self.rarity = rarity or "common"
+        self.rarity = rarity
+        self.keywords = keywords or []
+        self.oracle_text = oracle_text or ""
         self.cached_png_path = cached_png_path
         self.cached_art_path = cached_art_path
 
@@ -170,6 +174,8 @@ class ScryfallClient:
                 promo_types=card_json.get("promo_types", []),
                 security_stamp=card_json.get("security_stamp"),
                 rarity=card_json.get("rarity", "common"),
+                keywords=card_json.get("keywords", []),
+                oracle_text=card_json.get("oracle_text", ""),
                 cached_png_path=str(png_cache_path),
                 cached_art_path=str(art_cache_path) if art_cache_path.exists() else None,
             )

@@ -214,6 +214,9 @@ async def process_single_card(card: CardItem):
             full_art=card_data.full_art,
             security_stamp=card_data.security_stamp,
             rarity=card_data.rarity,
+            keywords=card_data.keywords,
+            oracle_text=card_data.oracle_text,
+            card_name=card.card_name,
         )
         card.art_box = card_boxes.get("art_box")
         card.rules_box = card_boxes.get("rules_box")
@@ -252,12 +255,17 @@ async def process_single_card(card: CardItem):
             generator = get_generator(state.provider)
         t_lower = (card_data.type_line or "").lower()
         l_lower = (card_data.layout or "").lower()
+        c_lower = (card.card_name or "").lower()
         is_battle = any(k in t_lower for k in ["battle", "siege"]) or (l_lower == "battle")
         is_room = ("room" in t_lower) or (l_lower == "room") or (l_lower == "split" and "room" in t_lower)
+        is_split = (not is_room) and (
+            (l_lower == "split")
+            or ("//" in c_lower and any(kw in t_lower for kw in ["instant", "sorcery", "spell"]))
+        )
         is_saga = ("saga" in t_lower) or (l_lower == "saga")
         is_class_or_case = any(k in t_lower for k in ["class", "case"]) or (l_lower in ["class", "case"])
 
-        if is_battle or is_room:
+        if is_battle or is_room or is_split:
             # Landscape layout: generate large square canvas, rotate 90° CCW (left), center-crop to (cw, ch)
             gen_w = max(cw, ch)
             gen_h = max(cw, ch)
@@ -285,7 +293,7 @@ async def process_single_card(card: CardItem):
             focal_center=focal_pt,
         )
 
-        if is_battle or is_room:
+        if is_battle or is_room or is_split:
             # Rotate 90° CCW (left) and center crop to (cw, ch)
             art_rot = generated_art.rotate(90, expand=True)
             crop_left = max(0, (art_rot.width - cw) // 2)
