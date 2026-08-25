@@ -323,8 +323,9 @@ async def process_single_card(card: CardItem):
         state.card_image_paths[card.id] = png_path
         state.card_thumb_paths[card.id] = thumb_path
 
+        card.mode = "art"
         card.status = "ready"
-        card.status_message = "800 DPI card image ready for MPC."
+        card.status_message = ""
         card.image_url = f"/api/cards/{card.id}/image"
         state.broadcast_card_update(card)
         state.broadcast_log(f"✅ Card {card.card_name} completed successfully at 800 DPI.")
@@ -339,6 +340,7 @@ async def process_single_card(card: CardItem):
 async def process_single_proxy_card(card: CardItem):
     """Pipeline for generating clean 800 DPI proxy: Scryfall -> Remove Copyright/Holo -> Add PROXY Text -> 800 DPI MPC Scaling."""
     try:
+        card.mode = "proxy"
         # 1. Fetch card data and high-res frame from Scryfall
         card.status = "fetching"
         card.status_message = "Retrieving highest resolution card scan from Scryfall..."
@@ -386,8 +388,9 @@ async def process_single_proxy_card(card: CardItem):
         state.card_image_paths[card.id] = png_path
         state.card_thumb_paths[card.id] = thumb_path
 
+        card.mode = "proxy"
         card.status = "ready"
-        card.status_message = "800 DPI proxy image ready for MPC."
+        card.status_message = ""
         card.image_url = f"/api/cards/{card.id}/image"
         state.broadcast_card_update(card)
         state.broadcast_log(f"✅ Proxy card {card.card_name} completed successfully at 800 DPI.")

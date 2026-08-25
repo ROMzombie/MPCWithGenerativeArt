@@ -8,8 +8,9 @@ const SAMPLE_DECK = `1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like 
 
 // Application state
 let currentCards = [];
-let isGeneratingDeck = false;
+let currentMode = "art";
 let eventSource = null;
+let debounceTimer = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   initUI();
@@ -197,13 +198,15 @@ async function handleGenerateDeck() {
     return;
   }
 
+  currentMode = "art";
   const btnGenerate = document.getElementById("btnGenerate");
   const btnGenerateArtNav = document.getElementById("btnGenerateArtNav");
   setActionButtonsDisabled(true);
-  if (btnGenerate) btnGenerate.innerHTML = `<span class="spinner"></span> Generating Art (800 DPI)...`;
+  if (btnGenerate) btnGenerate.innerHTML = `<span class="spinner"></span> Generating Art...`;
   if (btnGenerateArtNav) btnGenerateArtNav.innerHTML = `<span class="spinner"></span> Generating...`;
 
   currentCards.forEach((c) => {
+    c.mode = "art";
     c.status = "generating";
     c.status_message = "Starting art generation...";
   });
@@ -226,7 +229,7 @@ async function handleGenerateDeck() {
     alert("Error starting art generation: " + err.message);
   } finally {
     setActionButtonsDisabled(false);
-    if (btnGenerate) btnGenerate.innerHTML = `🎨 Generate Art (800 DPI)`;
+    if (btnGenerate) btnGenerate.innerHTML = `🎨 Generate Art`;
     if (btnGenerateArtNav) btnGenerateArtNav.innerHTML = `🎨 Generate Art`;
   }
 }
@@ -238,13 +241,15 @@ async function handleGenerateProxies() {
     return;
   }
 
+  currentMode = "proxy";
   const btnGenerateProxies = document.getElementById("btnGenerateProxies");
   const btnJustProxiesNav = document.getElementById("btnJustProxiesNav");
   setActionButtonsDisabled(true);
-  if (btnGenerateProxies) btnGenerateProxies.innerHTML = `<span class="spinner"></span> Creating Proxies (800 DPI)...`;
+  if (btnGenerateProxies) btnGenerateProxies.innerHTML = `<span class="spinner"></span> Creating Proxies...`;
   if (btnJustProxiesNav) btnJustProxiesNav.innerHTML = `<span class="spinner"></span> Processing...`;
 
   currentCards.forEach((c) => {
+    c.mode = "proxy";
     c.status = "fetching";
     c.status_message = "Retrieving card scan from Scryfall...";
   });
@@ -267,7 +272,7 @@ async function handleGenerateProxies() {
     alert("Error starting proxy generation: " + err.message);
   } finally {
     setActionButtonsDisabled(false);
-    if (btnGenerateProxies) btnGenerateProxies.innerHTML = `🎴 Just Proxies (800 DPI)`;
+    if (btnGenerateProxies) btnGenerateProxies.innerHTML = `🎴 Just Proxies`;
     if (btnJustProxiesNav) btnJustProxiesNav.innerHTML = `🎴 Just Proxies`;
   }
 }
@@ -278,6 +283,9 @@ async function loadInitialCards() {
     const data = await res.json();
     if (data.cards && data.cards.length > 0) {
       currentCards = data.cards;
+      if (currentCards.some((c) => c.mode === "proxy")) {
+        currentMode = "proxy";
+      }
       renderCardGrid();
     }
   } catch (err) {
@@ -289,6 +297,7 @@ function renderCardGrid() {
   const grid = document.getElementById("cardsGrid");
   const countEl = document.getElementById("cardCountLabel");
   const section = document.getElementById("gridSection");
+  const gridTitle = document.getElementById("gridTitle");
 
   if (!currentCards || currentCards.length === 0) {
     section.style.display = "none";
@@ -296,6 +305,11 @@ function renderCardGrid() {
   }
 
   section.style.display = "block";
+  const isProxyMode = currentMode === "proxy" || currentCards.every((c) => c.mode === "proxy");
+  if (gridTitle) {
+    gridTitle.textContent = isProxyMode ? "🎴 Generated Proxies" : "🎨 Generated Cards";
+  }
+
   const totalCopies = currentCards.reduce((sum, c) => sum + (c.copies || 1), 0);
   countEl.textContent = `${currentCards.length} Unique Cards (${totalCopies} Total Copies)`;
 
@@ -310,20 +324,26 @@ function renderCardGrid() {
     const promptInput = cardEl.querySelector(".prompt-textarea");
     const previewContainer = cardEl.querySelector(".card-preview-container");
 
-    btnRegen.addEventListener("click", () => {
-      regenerateSingleCard(card.id, promptInput.value);
-    });
+    if (btnRegen && promptInput) {
+      btnRegen.addEventListener("click", () => {
+        regenerateSingleCard(card.id, promptInput.value);
+      });
+    }
 
-    previewContainer.addEventListener("click", () => {
-      openLightbox(card);
-    });
+    if (previewContainer) {
+      previewContainer.addEventListener("click", () => {
+        openLightbox(card);
+      });
+    }
   });
 }
 
 function createCardElementHTML(card) {
   const isReady = card.status === "ready";
+  const isProxyMode = card.mode === "proxy" || currentMode === "proxy";
   const imgSrc = isReady ? `/api/cards/${card.id}/thumb?t=${Date.now()}` : "";
-  const placeholderText = card.status_message || (card.status === "ready" ? "Card Rendered" : "Queued...");
+  const placeholderText = card.status_message || (isReady ? "Card Rendered" : "Queued...");
+  const showStatusMsg = !isReady && card.status_message && card.status_message.trim().length > 0;
 
   return `
     <div class="card-item" id="card-elem-${card.id}">
@@ -346,25 +366,22 @@ function createCardElementHTML(card) {
           <span class="card-status-badge status-${card.status}">${escapeHtml(card.status)}</span>
         </div>
 
-        <div style="font-size: 0.8rem; color: var(--text-muted);">${escapeHtml(card.status_message || "")}</div>
+        ${showStatusMsg ? `<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">${escapeHtml(card.status_message)}</div>` : ""}
 
-        <div>
-          <label class="prompt-label">Generative Prompt:</label>
-          <textarea class="prompt-textarea" rows="3">${escapeHtml(card.prompt)}</textarea>
-        </div>
+        ${
+          !isProxyMode
+            ? `<div>
+                <label class="prompt-label">Generative Prompt:</label>
+                <textarea class="prompt-textarea" rows="3">${escapeHtml(card.prompt)}</textarea>
+              </div>
 
-        <div class="card-actions">
-          <button class="btn btn-secondary btn-sm btn-regen" ${card.status === "generating" || card.status === "compositing" ? "disabled" : ""}>
-            🔄 Regenerate
-          </button>
-          ${
-            isReady
-              ? `<a href="/api/cards/${card.id}/image" download="${card.id}.png" class="btn btn-secondary btn-sm">
-                  ⬇️ 800 DPI PNG
-                </a>`
-              : ""
-          }
-        </div>
+              <div class="card-actions">
+                <button class="btn btn-secondary btn-sm btn-regen" ${card.status === "generating" || card.status === "compositing" ? "disabled" : ""}>
+                  🔄 Regenerate
+                </button>
+              </div>`
+            : ""
+        }
       </div>
     </div>
   `;
@@ -391,8 +408,12 @@ function updateCardInUI(updatedCard) {
     const promptInput = newEl.querySelector(".prompt-textarea");
     const previewContainer = newEl.querySelector(".card-preview-container");
 
-    btnRegen.addEventListener("click", () => regenerateSingleCard(updatedCard.id, promptInput.value));
-    previewContainer.addEventListener("click", () => openLightbox(updatedCard));
+    if (btnRegen && promptInput) {
+      btnRegen.addEventListener("click", () => regenerateSingleCard(updatedCard.id, promptInput.value));
+    }
+    if (previewContainer) {
+      previewContainer.addEventListener("click", () => openLightbox(updatedCard));
+    }
   } else {
     renderCardGrid();
   }

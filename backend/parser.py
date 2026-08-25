@@ -24,6 +24,7 @@ class CardItem(BaseModel):
     stat_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for power/toughness or loyalty stats (x1, y1, x2, y2)")
     title_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for card name/mana header (x1, y1, x2, y2)")
     type_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for type line (x1, y1, x2, y2)")
+    mode: Optional[str] = Field("art", description="Generation mode: art or proxy")
     created_at: Optional[str] = None
 
 
