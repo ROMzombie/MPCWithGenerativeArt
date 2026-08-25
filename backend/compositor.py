@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any, Union, List
-from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageChops
+from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageChops, ImageFont, ImageEnhance
 
 OUTPUT_DIR = Path("output/cards")
 THUMB_DIR = Path("output/thumbnails")
@@ -901,6 +901,164 @@ def composite_card(
     )
 
 
+def get_bold_arial_font(size: int) -> ImageFont.ImageFont:
+    """
+    Attempts to load bold Arial font from local system font locations,
+    falling back to standard Arial or default bitmap/TrueType font.
+    """
+    font_candidates = [
+        "arialbd.ttf",
+        "Arial-Bold.ttf",
+        "Arial_Bold.ttf",
+        "Arial Bold.ttf",
+        "arial.ttf",
+        "Arial.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf",
+        "/usr/share/fonts/truetype/msttcorefonts/arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/Library/Fonts/Arial Bold.ttf",
+        "/Library/Fonts/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+    ]
+    for font_path in font_candidates:
+        try:
+            return ImageFont.truetype(font_path, size=size)
+        except Exception:
+            continue
+    try:
+        return ImageFont.load_default(size=size)
+    except Exception:
+        return ImageFont.load_default()
+
+
+def create_proxy_card(
+    card_frame_img: Image.Image,
+    card_boxes: Optional[Dict[str, Any]] = None,
+    target_dpi: int = 800,
+    target_width: int = MPC_800DPI_WIDTH,
+    target_height: int = MPC_800DPI_HEIGHT,
+) -> Image.Image:
+    """
+    Transforms a high-resolution Scryfall card scan into a print-ready MakePlayingCards proxy:
+    1. Removes the copyright, set code, artist, and collector number bar at the bottom.
+    2. Removes the silver/oval holofoil security stamp if present.
+    3. Adds 'PROXY' in bold dark grey Arial font centered in the bottom bar space.
+    4. Upscales the image to 800 DPI MakePlayingCards canvas dimensions (2184x2968)
+       with 1/8" (100px) bleed margins and AI edge-preserving sharpness filters.
+    """
+    cw, ch = card_frame_img.size
+    sx = cw / 745.0
+    sy = ch / 1040.0
+
+    boxes = card_boxes if card_boxes is not None else detect_card_boxes(card_frame_img)
+    card_work = card_frame_img.convert("RGBA").copy()
+    draw = ImageDraw.Draw(card_work)
+
+    # 1. Remove Holofoil Stamp if present (cleanly covers oval with solid black border)
+    holo = boxes.get("holo_stamp")
+    if not holo and not boxes.get("is_borderless"):
+        # Probe center-bottom region for metallic/silver security stamp
+        probe_x = int(372 * sx)
+        probe_y = int(965 * sy)
+        try:
+            p = card_frame_img.getpixel((probe_x, probe_y))
+            if sum(p[:3]) / 3.0 > 75:
+                holo = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy))
+        except Exception:
+            pass
+
+    if holo:
+        pad_x = max(1, int(2 * sx))
+        pad_y = max(1, int(2 * sy))
+        holo_ellipse = [holo[0] - pad_x, holo[1] - pad_y, holo[2] + pad_x, holo[3] + pad_y]
+        draw.ellipse(holo_ellipse, fill=(0, 0, 0, 255))
+
+    # 2. Remove Copyright / Set Number / Artist bar at the bottom
+    # Bottom margin has black card border starting below rules box (~965*sy)
+    stat_box = boxes.get("stat_box")
+    stat_poly = boxes.get("stat_polygon")
+
+    bar_bottom = int(1032 * sy)
+    bar_left = int(30 * sx)
+    bar_right = int(715 * sx)
+
+    if stat_box or stat_poly:
+        stat_left = stat_box[0] if stat_box else (min(pt[0] for pt in stat_poly) if stat_poly else int(560 * sx))
+        stat_bottom = stat_box[3] if stat_box else (max(pt[1] for pt in stat_poly) if stat_poly else int(984 * sy))
+        # Left of stat box: blackout from below rules box (~968*sy) down to bottom
+        draw.rectangle([bar_left, int(968 * sy), stat_left, bar_bottom], fill=(0, 0, 0, 255))
+        # Below stat box across full width: blackout down to bottom
+        draw.rectangle([bar_left, max(int(978 * sy), stat_bottom), bar_right, bar_bottom], fill=(0, 0, 0, 255))
+    else:
+        # Full width blackout below rules box
+        draw.rectangle([bar_left, int(968 * sy), bar_right, bar_bottom], fill=(0, 0, 0, 255))
+
+    # 3. Add 'PROXY' text in bold Arial font, dark grey color
+    font_size_card = max(14, int(20 * sy))
+    font_card = get_bold_arial_font(font_size_card)
+
+    text = "PROXY"
+    dark_grey = (120, 120, 120, 255)
+
+    try:
+        bbox = draw.textbbox((0, 0), text, font=font_card)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+    except Exception:
+        tw = int(font_size_card * 3.5)
+        th = font_size_card
+
+    bar_mid_y = int(998 * sy)
+    text_x = (cw - tw) // 2
+    text_y = bar_mid_y - th // 2 - (bbox[1] if 'bbox' in locals() else 0)
+    draw.text((text_x, text_y), text, fill=dark_grey, font=font_card)
+
+    # 4. Upscale image to MakePlayingCards 800 DPI dimensions with 1/8" bleed margin
+    # Physical card cut dimensions: 1984 x 2768 (at 800 DPI)
+    base_card_w = int(target_width * (MPC_CUT_WIDTH / MPC_800DPI_WIDTH))
+    base_card_h = int(target_height * (MPC_CUT_HEIGHT / MPC_800DPI_HEIGHT))
+
+    # Upscale the card frame using high-fidelity Lanczos resampling
+    card_upscaled = card_work.resize((base_card_w, base_card_h), Image.Resampling.LANCZOS)
+
+    # Apply AI edge sharpening / unsharp mask filter to maintain crisp typography and art detail
+    card_rgb = card_upscaled.convert("RGB")
+    card_enhanced = card_rgb.filter(ImageFilter.UnsharpMask(radius=1.5, percent=120, threshold=3))
+    sharpness_enhancer = ImageEnhance.Sharpness(card_enhanced)
+    card_enhanced = sharpness_enhancer.enhance(1.10)
+
+    # Render ultra-crisp 'PROXY' text at full 800 DPI target resolution in the bottom bar space
+    draw_enhanced = ImageDraw.Draw(card_enhanced)
+    font_size_800 = max(36, int(56 * (base_card_h / 2768.0)))
+    font_800 = get_bold_arial_font(font_size_800)
+
+    try:
+        bbox_800 = draw_enhanced.textbbox((0, 0), text, font=font_800)
+        tw_800 = bbox_800[2] - bbox_800[0]
+        th_800 = bbox_800[3] - bbox_800[1]
+    except Exception:
+        tw_800 = int(font_size_800 * 3.5)
+        th_800 = font_size_800
+
+    bar_mid_y_800 = int(bar_mid_y * (base_card_h / ch))
+    t800_x = (base_card_w - tw_800) // 2
+    t800_y = bar_mid_y_800 - th_800 // 2 - (bbox_800[1] if 'bbox_800' in locals() else 0)
+    draw_enhanced.text((t800_x, t800_y), text, fill=(120, 120, 120), font=font_800)
+
+    # 5. Place card onto full 2184x2968 canvas with 100px (1/8") black bleed margins
+    ox = (target_width - base_card_w) // 2
+    oy = (target_height - base_card_h) // 2
+
+    # Black bleed canvas (standard for MTG cards on MakePlayingCards)
+    canvas = Image.new("RGB", (target_width, target_height), (0, 0, 0))
+    canvas.paste(card_enhanced, (ox, oy))
+
+    return canvas
+
+
 def save_card_outputs(
     card_id: str,
     final_image: Image.Image,
@@ -929,3 +1087,4 @@ def save_card_outputs(
     thumb_img.save(thumb_path, format="JPEG", quality=88, optimize=True)
 
     return str(png_path), str(thumb_path)
+

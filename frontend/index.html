@@ -20,8 +20,14 @@
       <button class="btn btn-secondary btn-sm" id="btnSettings">
         ⚙️ Settings
       </button>
-      <button class="btn btn-done" id="btnDone">
-        ✨ I'm Done
+      <button class="btn btn-primary btn-sm" id="btnGenerateArtNav" disabled>
+        🎨 Generate Art
+      </button>
+      <button class="btn btn-secondary btn-sm" id="btnJustProxiesNav" disabled>
+        🎴 Just Proxies
+      </button>
+      <button class="btn btn-done btn-sm" id="btnDone">
+        🚀 Ready for MPC
       </button>
     </div>
   </header>
@@ -39,11 +45,11 @@
       </div>
 
       <p class="section-subtitle">
-        Enter lines matching the format below, or drag-and-drop a text file. Each card art will be replaced with custom generative artwork based on your prompt and upscaled to <strong>800 DPI print quality</strong> for MakePlayingCards.
+        Enter lines matching the format below, or drag-and-drop a text file. Click <strong>Generate Art</strong> to replace artwork with generative art, or <strong>Just Proxies</strong> to clean and upscale original Scryfall card frames to <strong>800 DPI print quality</strong> for MakePlayingCards.
       </p>
 
       <div class="code-format-tip">
-        Format: Copies CardName (set) CollectorNumber # prompt
+        Format: Copies CardName (set) CollectorNumber # prompt (or without prompt for Just Proxies)
       </div>
 
       <!-- File Dropzone -->
@@ -66,9 +72,14 @@
         <div id="validationStatus">
           <span style="color: var(--text-muted);">Awaiting deck input...</span>
         </div>
-        <button class="btn btn-primary" id="btnGenerate" disabled>
-          ✨ Generate Deck (800 DPI)
-        </button>
+        <div class="action-btn-group" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" id="btnGenerate" disabled>
+            🎨 Generate Art (800 DPI)
+          </button>
+          <button class="btn btn-secondary" id="btnGenerateProxies" disabled>
+            🎴 Just Proxies (800 DPI)
+          </button>
+        </div>
       </div>
 
       <div id="errorContainer" class="error-list" style="display: none;"></div>
@@ -76,11 +87,16 @@
 
     <!-- Card Grid Section -->
     <section class="card-section" id="gridSection" style="display: none;">
-      <div class="grid-header">
-        <h2 class="section-title">
-          🎨 Generated Cards (800 DPI Print Ready)
-        </h2>
-        <span id="cardCountLabel" style="font-size: 0.9rem; color: var(--text-secondary); font-weight: 600;"></span>
+      <div class="grid-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <h2 class="section-title" id="gridTitle" style="display: inline-block; margin-right: 0.75rem;">
+            🎨 Generated Cards (800 DPI Print Ready)
+          </h2>
+          <span id="cardCountLabel" style="font-size: 0.9rem; color: var(--text-secondary); font-weight: 600;"></span>
+        </div>
+        <button class="btn btn-done btn-sm" id="btnGridDone">
+          🚀 Ready for MPC
+        </button>
       </div>
 
       <div class="cards-grid" id="cardsGrid">

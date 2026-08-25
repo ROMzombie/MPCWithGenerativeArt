@@ -54,6 +54,7 @@ from backend.compositor import (
     detect_art_box,
     composite_card,
     composite_full_art_card,
+    create_proxy_card,
     save_card_outputs,
     MPC_BLEED_SCALE,
     scale_card_frame_and_boxes,
@@ -95,6 +96,7 @@ class AppState:
             self.provider: str = "janus"
         else:
             self.provider: str = "perchance"
+        self.mode: str = "art"
         self.is_generating: bool = False
         self.progress_subscribers: List[asyncio.Queue] = []
 
@@ -136,7 +138,7 @@ class ParseRequest(BaseModel):
 
 
 class RegenerateRequest(BaseModel):
-    prompt: str
+    prompt: Optional[str] = ""
 
 
 class SettingsModel(BaseModel):
@@ -151,7 +153,7 @@ class SettingsModel(BaseModel):
 @app.post("/api/parse", response_model=ParseResult)
 async def api_parse(req: ParseRequest):
     """Validates and parses deck file content."""
-    res = parse_deck_text(req.text)
+    res = parse_deck_text(req.text, require_prompt=False)
     if res.valid:
         state.raw_deck_text = req.text
         state.cards = res.cards
@@ -164,7 +166,7 @@ async def api_parse_file(file: UploadFile = File(...)):
     """Upload and validate deck file."""
     content = await file.read()
     text = content.decode("utf-8", errors="replace")
-    res = parse_deck_text(text)
+    res = parse_deck_text(text, require_prompt=False)
     if res.valid:
         state.raw_deck_text = text
         state.cards = res.cards
@@ -179,6 +181,7 @@ async def get_cards():
         "cards": [c.model_dump() for c in state.cards],
         "total_copies": sum(c.copies for c in state.cards),
         "is_generating": state.is_generating,
+        "mode": getattr(state, "mode", "art"),
         "provider": state.provider,
         "global_prompt": state.global_prompt,
     }
@@ -333,6 +336,69 @@ async def process_single_card(card: CardItem):
         state.broadcast_log(f"❌ Failed to process {card.card_name}: {str(e)}", level="error")
 
 
+async def process_single_proxy_card(card: CardItem):
+    """Pipeline for generating clean 800 DPI proxy: Scryfall -> Remove Copyright/Holo -> Add PROXY Text -> 800 DPI MPC Scaling."""
+    try:
+        # 1. Fetch card data and high-res frame from Scryfall
+        card.status = "fetching"
+        card.status_message = "Retrieving highest resolution card scan from Scryfall..."
+        state.broadcast_card_update(card)
+        state.broadcast_log(f"Fetching Scryfall high-res frame for {card.card_name} ({card.set_code} #{card.collector_number})...")
+
+        card_data = await scryfall_client.get_card(card.set_code, card.collector_number, card.card_name)
+        card.scryfall_id = card_data.id
+        card.scryfall_png_url = card_data.png_url
+        card.scryfall_art_url = card_data.art_crop_url
+
+        # Load card frame into Pillow
+        card_frame_img = Image.open(card_data.cached_png_path).convert("RGB")
+
+        # 2. Detect card boxes and layout
+        card_boxes = detect_card_boxes(
+            card_img=card_frame_img,
+            type_line=card_data.type_line,
+            flavor_name=card_data.flavor_name,
+            border_color=card_data.border_color,
+            frame_effects=card_data.frame_effects,
+            layout=card_data.layout,
+            full_art=card_data.full_art,
+            security_stamp=card_data.security_stamp,
+            rarity=card_data.rarity,
+            keywords=card_data.keywords,
+            oracle_text=card_data.oracle_text,
+            card_name=card.card_name,
+        )
+
+        # 3. Clean copyright/set number bar, remove holofoil, add bold Arial 'PROXY', and upscale to 800 DPI
+        card.status = "compositing"
+        card.status_message = "Removing copyright/holofoil, adding PROXY label, and upscaling to 800 DPI..."
+        state.broadcast_card_update(card)
+        state.broadcast_log(f"Compositing 800 DPI proxy print image for {card.card_name}...")
+
+        proxy_img = create_proxy_card(
+            card_frame_img=card_frame_img,
+            card_boxes=card_boxes,
+            target_dpi=800,
+        )
+
+        # 4. Save outputs
+        png_path, thumb_path = save_card_outputs(card.id, proxy_img, target_dpi=800)
+        state.card_image_paths[card.id] = png_path
+        state.card_thumb_paths[card.id] = thumb_path
+
+        card.status = "ready"
+        card.status_message = "800 DPI proxy image ready for MPC."
+        card.image_url = f"/api/cards/{card.id}/image"
+        state.broadcast_card_update(card)
+        state.broadcast_log(f"✅ Proxy card {card.card_name} completed successfully at 800 DPI.")
+
+    except Exception as e:
+        card.status = "error"
+        card.status_message = f"Error: {str(e)}"
+        state.broadcast_card_update(card)
+        state.broadcast_log(f"❌ Failed to process proxy for {card.card_name}: {str(e)}", level="error")
+
+
 def get_provider_concurrency(provider: Optional[str] = None) -> int:
     """
     Determines maximum parallel card generation workers based on provider.
@@ -357,6 +423,8 @@ async def api_generate_deck():
     if state.is_generating:
         return {"status": "already_running", "message": "Generation is already in progress."}
 
+    state.mode = "art"
+
     async def run_batch():
         state.is_generating = True
         concurrency = get_provider_concurrency(state.provider)
@@ -373,23 +441,75 @@ async def api_generate_deck():
         state.broadcast_log("🎉 All deck cards generated and ready for MakePlayingCards!")
 
     asyncio.create_task(run_batch())
-    return {"status": "started", "total_cards": len(state.cards), "concurrency": get_provider_concurrency(state.provider)}
+    return {"status": "started", "total_cards": len(state.cards), "mode": "art", "concurrency": get_provider_concurrency(state.provider)}
+
+
+@app.post("/api/generate-proxies")
+async def api_generate_proxies():
+    """Triggers high-resolution proxy generation for all cards in the parsed deck list."""
+    if not state.cards:
+        raise HTTPException(status_code=400, detail="No parsed cards available. Please submit a valid deck first.")
+
+    if state.is_generating:
+        return {"status": "already_running", "message": "Generation is already in progress."}
+
+    state.mode = "proxy"
+
+    async def run_batch():
+        state.is_generating = True
+        concurrency = 4
+        state.broadcast_log(f"Starting batch proxy generation ({len(state.cards)} cards, concurrency: {concurrency})...")
+        
+        sem = asyncio.Semaphore(concurrency)
+
+        async def worker(card_item: CardItem):
+            async with sem:
+                await process_single_proxy_card(card_item)
+
+        await asyncio.gather(*(worker(c) for c in state.cards))
+        state.is_generating = False
+        state.broadcast_log("🎉 All proxy cards generated and ready for MakePlayingCards!")
+
+    asyncio.create_task(run_batch())
+    return {"status": "started", "total_cards": len(state.cards), "mode": "proxy", "concurrency": 4}
 
 
 @app.post("/api/cards/{card_id}/regenerate")
 async def api_regenerate_card(card_id: str, req: RegenerateRequest):
-    """Regenerates art and 800 DPI card for a single card with an updated prompt."""
+    """Regenerates art or proxy for a single card."""
     target_card = next((c for c in state.cards if c.id == card_id), None)
     if not target_card:
         raise HTTPException(status_code=404, detail="Card not found.")
 
-    target_card.prompt = req.prompt.strip()
+    if req.prompt:
+        target_card.prompt = req.prompt.strip()
     target_card.status = "queued"
-    target_card.status_message = "Queued for prompt regeneration..."
+    target_card.status_message = "Queued for regeneration..."
     state.broadcast_card_update(target_card)
 
     async def run_single():
-        await process_single_card(target_card)
+        if getattr(state, "mode", "art") == "proxy":
+            await process_single_proxy_card(target_card)
+        else:
+            await process_single_card(target_card)
+
+    asyncio.create_task(run_single())
+    return {"status": "queued", "card": target_card.model_dump()}
+
+
+@app.post("/api/cards/{card_id}/regenerate-proxy")
+async def api_regenerate_proxy_card(card_id: str):
+    """Regenerates a single card as an 800 DPI proxy."""
+    target_card = next((c for c in state.cards if c.id == card_id), None)
+    if not target_card:
+        raise HTTPException(status_code=404, detail="Card not found.")
+
+    target_card.status = "queued"
+    target_card.status_message = "Queued for proxy regeneration..."
+    state.broadcast_card_update(target_card)
+
+    async def run_single():
+        await process_single_proxy_card(target_card)
 
     asyncio.create_task(run_single())
     return {"status": "queued", "card": target_card.model_dump()}

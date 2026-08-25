@@ -12,7 +12,7 @@ class CardItem(BaseModel):
     card_name: str = Field(..., description="The name of the card")
     set_code: str = Field(..., description="The set code (e.g. PH21, SLD, MH3)")
     collector_number: str = Field(..., description="The collector number (e.g. 3, 2695, 2189)")
-    prompt: str = Field(..., description="The prompt used for generative card art")
+    prompt: str = Field("", description="The prompt used for generative card art")
     status: str = Field("queued", description="Status: queued, fetching, generating, compositing, ready, error")
     status_message: str = Field("", description="Detailed progress or error message")
     image_url: Optional[str] = Field(None, description="URL or relative path to the generated 800 DPI card image")
@@ -46,10 +46,11 @@ CARD_SPLIT_PATTERN = re.compile(
 )
 
 
-def parse_deck_text(text: str) -> ParseResult:
+def parse_deck_text(text: str, require_prompt: bool = True) -> ParseResult:
     """
     Parses deck lines formatted as:
     Copies CardName (set) CollectorNumber # prompt
+    or Copies CardName (set) CollectorNumber (if require_prompt is False or global_prompt is present)
 
     If the first line (or first non-empty line) starts with '#', the following
     text is treated as a global prompt returned in ParseResult.global_prompt,
@@ -96,7 +97,7 @@ def parse_deck_text(text: str) -> ParseResult:
                 errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
                 continue
 
-            if not raw_prompt and not global_prompt:
+            if require_prompt and not raw_prompt and not global_prompt:
                 errors.append(f"Line {idx}: Missing prompt for card '{card_name}'")
                 continue
 
@@ -131,7 +132,7 @@ def parse_deck_text(text: str) -> ParseResult:
                 if copies <= 0:
                     errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
                     continue
-                if not prompt_part and not global_prompt:
+                if require_prompt and not prompt_part and not global_prompt:
                     errors.append(f"Line {idx}: Missing prompt for card '{card_name}'")
                     continue
 
@@ -150,8 +151,8 @@ def parse_deck_text(text: str) -> ParseResult:
                 total_copies += copies
                 continue
 
-        # If line has no # prompt but global_prompt exists, check if card part matches
-        if global_prompt:
+        # If line has no # prompt, check if card part matches (when require_prompt is False or global_prompt exists)
+        if not require_prompt or global_prompt:
             card_match = CARD_SPLIT_PATTERN.match(line)
             if card_match:
                 copies = int(card_match.group("copies"))

@@ -126,6 +126,13 @@ body {
   font-size: 0.8rem;
 }
 
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
 /* Container */
 .container {
   max-width: 1300px;

@@ -3,11 +3,14 @@ import tempfile
 import unittest
 import unittest.mock
 from fastapi.testclient import TestClient
-from backend.app import app
+from backend.app import app, state
 
 client = TestClient(app)
 
 class TestFastAPIEndpoints(unittest.TestCase):
+
+    def setUp(self):
+        state.is_generating = False
 
     def test_index_page(self):
         resp = client.get("/")

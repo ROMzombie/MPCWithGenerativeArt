@@ -22,9 +22,13 @@ function initUI() {
   const deckInput = document.getElementById("deckInput");
   const btnSample = document.getElementById("btnSample");
   const btnGenerate = document.getElementById("btnGenerate");
+  const btnGenerateProxies = document.getElementById("btnGenerateProxies");
+  const btnGenerateArtNav = document.getElementById("btnGenerateArtNav");
+  const btnJustProxiesNav = document.getElementById("btnJustProxiesNav");
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("fileInput");
   const btnDone = document.getElementById("btnDone");
+  const btnGridDone = document.getElementById("btnGridDone");
   const btnSettings = document.getElementById("btnSettings");
 
   // Tab key interceptor for deck textarea (inserts " # " prompt separator)
@@ -53,8 +57,13 @@ function initUI() {
     validateDeckInput();
   });
 
-  // Generate Deck submit button
-  btnGenerate.addEventListener("click", handleGenerateDeck);
+  // Generate Art buttons
+  if (btnGenerate) btnGenerate.addEventListener("click", handleGenerateDeck);
+  if (btnGenerateArtNav) btnGenerateArtNav.addEventListener("click", handleGenerateDeck);
+
+  // Just Proxies buttons
+  if (btnGenerateProxies) btnGenerateProxies.addEventListener("click", handleGenerateProxies);
+  if (btnJustProxiesNav) btnJustProxiesNav.addEventListener("click", handleGenerateProxies);
 
   // File Dropzone
   dropzone.addEventListener("click", () => fileInput.click());
@@ -77,8 +86,9 @@ function initUI() {
     }
   });
 
-  // "I'm Done" button
-  btnDone.addEventListener("click", openDoneModal);
+  // "Ready for MPC" buttons
+  if (btnDone) btnDone.addEventListener("click", openDoneModal);
+  if (btnGridDone) btnGridDone.addEventListener("click", openDoneModal);
 
   // Settings button
   btnSettings.addEventListener("click", openSettingsModal);
@@ -119,16 +129,27 @@ function initEventSource() {
   };
 }
 
+function setActionButtonsDisabled(disabled) {
+  const btnGenerate = document.getElementById("btnGenerate");
+  const btnGenerateProxies = document.getElementById("btnGenerateProxies");
+  const btnGenerateArtNav = document.getElementById("btnGenerateArtNav");
+  const btnJustProxiesNav = document.getElementById("btnJustProxiesNav");
+
+  if (btnGenerate) btnGenerate.disabled = disabled;
+  if (btnGenerateProxies) btnGenerateProxies.disabled = disabled;
+  if (btnGenerateArtNav) btnGenerateArtNav.disabled = disabled;
+  if (btnJustProxiesNav) btnJustProxiesNav.disabled = disabled;
+}
+
 async function validateDeckInput() {
   const text = document.getElementById("deckInput").value;
   const statusEl = document.getElementById("validationStatus");
   const errorContainer = document.getElementById("errorContainer");
-  const btnGenerate = document.getElementById("btnGenerate");
 
   if (!text.trim()) {
     statusEl.innerHTML = `<span style="color: var(--text-muted)">Awaiting deck input...</span>`;
     errorContainer.style.display = "none";
-    btnGenerate.disabled = true;
+    setActionButtonsDisabled(true);
     return;
   }
 
@@ -143,13 +164,13 @@ async function validateDeckInput() {
     if (data.valid) {
       statusEl.innerHTML = `<span class="validation-valid">✓ Format Valid (${data.cards.length} unique cards, ${data.total_copies} total copies ready)</span>`;
       errorContainer.style.display = "none";
-      btnGenerate.disabled = false;
+      setActionButtonsDisabled(false);
       currentCards = data.cards;
     } else {
       statusEl.innerHTML = `<span class="validation-invalid">⚠ Validation Errors Found (${data.errors.length})</span>`;
       errorContainer.style.display = "block";
       errorContainer.innerHTML = data.errors.map((e) => `<div>• ${escapeHtml(e)}</div>`).join("");
-      btnGenerate.disabled = true;
+      setActionButtonsDisabled(true);
     }
   } catch (err) {
     statusEl.innerHTML = `<span class="validation-invalid">Network error validating deck</span>`;
@@ -164,19 +185,43 @@ async function handleFileUpload(file) {
 
 async function handleGenerateDeck() {
   const btnGenerate = document.getElementById("btnGenerate");
-  btnGenerate.disabled = true;
-  btnGenerate.innerHTML = `<span class="spinner"></span> Generating Deck (800 DPI)...`;
+  const btnGenerateArtNav = document.getElementById("btnGenerateArtNav");
+  setActionButtonsDisabled(true);
+  if (btnGenerate) btnGenerate.innerHTML = `<span class="spinner"></span> Generating Art (800 DPI)...`;
+  if (btnGenerateArtNav) btnGenerateArtNav.innerHTML = `<span class="spinner"></span> Generating...`;
 
   try {
     const res = await fetch("/api/generate", { method: "POST" });
     const data = await res.json();
-    console.log("Generation started:", data);
+    console.log("Art generation started:", data);
     renderCardGrid();
   } catch (err) {
-    alert("Error starting generation: " + err.message);
+    alert("Error starting art generation: " + err.message);
   } finally {
-    btnGenerate.disabled = false;
-    btnGenerate.innerHTML = `✨ Generate Deck (800 DPI)`;
+    setActionButtonsDisabled(false);
+    if (btnGenerate) btnGenerate.innerHTML = `🎨 Generate Art (800 DPI)`;
+    if (btnGenerateArtNav) btnGenerateArtNav.innerHTML = `🎨 Generate Art`;
+  }
+}
+
+async function handleGenerateProxies() {
+  const btnGenerateProxies = document.getElementById("btnGenerateProxies");
+  const btnJustProxiesNav = document.getElementById("btnJustProxiesNav");
+  setActionButtonsDisabled(true);
+  if (btnGenerateProxies) btnGenerateProxies.innerHTML = `<span class="spinner"></span> Creating Proxies (800 DPI)...`;
+  if (btnJustProxiesNav) btnJustProxiesNav.innerHTML = `<span class="spinner"></span> Processing Proxies...`;
+
+  try {
+    const res = await fetch("/api/generate-proxies", { method: "POST" });
+    const data = await res.json();
+    console.log("Proxy generation started:", data);
+    renderCardGrid();
+  } catch (err) {
+    alert("Error starting proxy generation: " + err.message);
+  } finally {
+    setActionButtonsDisabled(false);
+    if (btnGenerateProxies) btnGenerateProxies.innerHTML = `🎴 Just Proxies (800 DPI)`;
+    if (btnJustProxiesNav) btnJustProxiesNav.innerHTML = `🎴 Just Proxies`;
   }
 }
 
