@@ -119,6 +119,67 @@ class TestProxyPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(res_art.cards), 2)
         self.assertEqual(res_art.cards[0].prompt, "An anime girl")
 
+    def test_triangle_holo_stamp_masking(self):
+        # Universes Beyond card with inverted triangle security stamp
+        tri_img = Image.new("RGB", (self.card_w, self.card_h), (25, 25, 30))
+        draw = ImageDraw.Draw(tri_img)
+        # Inverted silver triangle at bottom center
+        tri_pts = [(336, 946), (408, 946), (372, 984)]
+        draw.polygon(tri_pts, fill=(235, 240, 245))
+
+        card_boxes = detect_card_boxes(tri_img, security_stamp="triangle")
+        self.assertEqual(card_boxes.get("stamp_type"), "triangle")
+
+        proxy_result = create_proxy_card(tri_img, card_boxes)
+        # Check that center of the triangle is covered with background
+        cut_w = int(MPC_800DPI_WIDTH * (1984 / 2184))
+        cut_h = int(MPC_800DPI_HEIGHT * (2768 / 2968))
+        ox = (MPC_800DPI_WIDTH - cut_w) // 2
+        oy = (MPC_800DPI_HEIGHT - cut_h) // 2
+
+        tri_center_x = ox + int(372 * (cut_w / 745.0))
+        tri_center_y = oy + int(960 * (cut_h / 1040.0))
+        pixel = proxy_result.getpixel((tri_center_x, tri_center_y))
+        # Masked with background color, not bright silver
+        self.assertLess(sum(pixel[:3]), 120)
+
+    def test_acorn_holo_stamp_masking(self):
+        # Un-set card with acorn security stamp
+        acorn_img = Image.new("RGB", (self.card_w, self.card_h), (25, 25, 30))
+        draw = ImageDraw.Draw(acorn_img)
+        draw.ellipse([336, 946, 408, 984], fill=(235, 240, 245))
+
+        card_boxes = detect_card_boxes(acorn_img, security_stamp="acorn")
+        self.assertEqual(card_boxes.get("stamp_type"), "acorn")
+
+        proxy_result = create_proxy_card(acorn_img, card_boxes)
+        cut_w = int(MPC_800DPI_WIDTH * (1984 / 2184))
+        cut_h = int(MPC_800DPI_HEIGHT * (2768 / 2968))
+        ox = (MPC_800DPI_WIDTH - cut_w) // 2
+        oy = (MPC_800DPI_HEIGHT - cut_h) // 2
+
+        acorn_center_x = ox + int(372 * (cut_w / 745.0))
+        acorn_center_y = oy + int(965 * (cut_h / 1040.0))
+        pixel = proxy_result.getpixel((acorn_center_x, acorn_center_y))
+        self.assertLess(sum(pixel[:3]), 120)
+
+    def test_background_color_sampling_and_matching(self):
+        # Dark charcoal / slate border (not pure black)
+        custom_bg = (38, 42, 52)
+        slate_img = Image.new("RGB", (self.card_w, self.card_h), custom_bg)
+        draw = ImageDraw.Draw(slate_img)
+        # Bright copyright text
+        draw.text((60, 995), "TM & (C) Wizards of the Coast", fill=(255, 255, 255))
+
+        from backend.compositor import sample_border_background_color
+        sampled_bg = sample_border_background_color(slate_img, 1.0, 1.0)
+        self.assertEqual(sampled_bg, custom_bg)
+
+        proxy_result = create_proxy_card(slate_img)
+        # Check that the bleed margin matches the card frame background color
+        bleed_pixel = proxy_result.getpixel((20, 20))
+        self.assertEqual(bleed_pixel, custom_bg)
+
     def test_bold_arial_font_resolution(self):
         font = get_bold_arial_font(32)
         self.assertIsNotNone(font)

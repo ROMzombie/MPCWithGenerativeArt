@@ -16,6 +16,10 @@ document.addEventListener("DOMContentLoaded", () => {
   initEventSource();
   loadInitialCards();
   loadSettings();
+  const deckInput = document.getElementById("deckInput");
+  if (deckInput && deckInput.value.trim()) {
+    validateDeckInput();
+  }
 });
 
 function initUI() {
@@ -150,7 +154,7 @@ async function validateDeckInput() {
     statusEl.innerHTML = `<span style="color: var(--text-muted)">Awaiting deck input...</span>`;
     errorContainer.style.display = "none";
     setActionButtonsDisabled(true);
-    return;
+    return false;
   }
 
   try {
@@ -166,14 +170,17 @@ async function validateDeckInput() {
       errorContainer.style.display = "none";
       setActionButtonsDisabled(false);
       currentCards = data.cards;
+      return true;
     } else {
       statusEl.innerHTML = `<span class="validation-invalid">⚠ Validation Errors Found (${data.errors.length})</span>`;
       errorContainer.style.display = "block";
       errorContainer.innerHTML = data.errors.map((e) => `<div>• ${escapeHtml(e)}</div>`).join("");
       setActionButtonsDisabled(true);
+      return false;
     }
   } catch (err) {
     statusEl.innerHTML = `<span class="validation-invalid">Network error validating deck</span>`;
+    return false;
   }
 }
 
@@ -184,17 +191,37 @@ async function handleFileUpload(file) {
 }
 
 async function handleGenerateDeck() {
+  const valid = await validateDeckInput();
+  if (!valid || !currentCards || currentCards.length === 0) {
+    alert("Please provide a valid deck list before generating art.");
+    return;
+  }
+
   const btnGenerate = document.getElementById("btnGenerate");
   const btnGenerateArtNav = document.getElementById("btnGenerateArtNav");
   setActionButtonsDisabled(true);
   if (btnGenerate) btnGenerate.innerHTML = `<span class="spinner"></span> Generating Art (800 DPI)...`;
   if (btnGenerateArtNav) btnGenerateArtNav.innerHTML = `<span class="spinner"></span> Generating...`;
 
+  currentCards.forEach((c) => {
+    c.status = "generating";
+    c.status_message = "Starting art generation...";
+  });
+  renderCardGrid();
+
+  const gridSec = document.getElementById("gridSection");
+  if (gridSec) {
+    gridSec.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   try {
     const res = await fetch("/api/generate", { method: "POST" });
     const data = await res.json();
+    if (!res.ok) {
+      alert("Error starting art generation: " + (data.detail || JSON.stringify(data)));
+      return;
+    }
     console.log("Art generation started:", data);
-    renderCardGrid();
   } catch (err) {
     alert("Error starting art generation: " + err.message);
   } finally {
@@ -205,17 +232,37 @@ async function handleGenerateDeck() {
 }
 
 async function handleGenerateProxies() {
+  const valid = await validateDeckInput();
+  if (!valid || !currentCards || currentCards.length === 0) {
+    alert("Please provide a valid deck list before generating proxies.");
+    return;
+  }
+
   const btnGenerateProxies = document.getElementById("btnGenerateProxies");
   const btnJustProxiesNav = document.getElementById("btnJustProxiesNav");
   setActionButtonsDisabled(true);
   if (btnGenerateProxies) btnGenerateProxies.innerHTML = `<span class="spinner"></span> Creating Proxies (800 DPI)...`;
-  if (btnJustProxiesNav) btnJustProxiesNav.innerHTML = `<span class="spinner"></span> Processing Proxies...`;
+  if (btnJustProxiesNav) btnJustProxiesNav.innerHTML = `<span class="spinner"></span> Processing...`;
+
+  currentCards.forEach((c) => {
+    c.status = "fetching";
+    c.status_message = "Retrieving card scan from Scryfall...";
+  });
+  renderCardGrid();
+
+  const gridSec = document.getElementById("gridSection");
+  if (gridSec) {
+    gridSec.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   try {
     const res = await fetch("/api/generate-proxies", { method: "POST" });
     const data = await res.json();
+    if (!res.ok) {
+      alert("Error starting proxy generation: " + (data.detail || JSON.stringify(data)));
+      return;
+    }
     console.log("Proxy generation started:", data);
-    renderCardGrid();
   } catch (err) {
     alert("Error starting proxy generation: " + err.message);
   } finally {

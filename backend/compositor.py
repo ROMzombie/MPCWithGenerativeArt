@@ -263,6 +263,22 @@ def detect_card_boxes(
     )
     holo_stamp = (int(336 * sx), int(946 * sy), int(408 * sx), int(984 * sy)) if has_holo else None
 
+    stamp_type = "oval"
+    if security_stamp:
+        s_clean = security_stamp.strip().lower()
+        if "triangle" in s_clean:
+            stamp_type = "triangle"
+        elif "acorn" in s_clean:
+            stamp_type = "acorn"
+        elif "heart" in s_clean:
+            stamp_type = "heart"
+        elif s_clean in ["oval", "circle", "arena"]:
+            stamp_type = s_clean
+    elif any("triangle" in f for f in effects):
+        stamp_type = "triangle"
+    elif any("acorn" in f for f in effects):
+        stamp_type = "acorn"
+
     if is_saga:
         # Saga vertical chapter layout:
         # 1. Main parchment rules text box: x=54..372, y=120..868 (prevents top & bottom left bleed)
@@ -553,6 +569,7 @@ def detect_card_boxes(
         "loyalty_polygons": loyalty_polygons,
         "station_circles": station_circles,
         "holo_stamp": holo_stamp,
+        "stamp_type": stamp_type,
         "extra_boxes": extra_boxes,
         "extra_polygons": extra_polygons,
         "title_box": title_box,
@@ -934,6 +951,105 @@ def get_bold_arial_font(size: int) -> ImageFont.ImageFont:
         return ImageFont.load_default()
 
 
+def sample_border_background_color(card_img: Image.Image, sx: float, sy: float) -> Tuple[int, int, int]:
+    """
+    Samples the card's native border/background color from unprinted margins
+    in the bottom border area to match the exact underlying frame color
+    instead of assuming pure #000000.
+    """
+    cw, ch = card_img.size
+    sample_points = [
+        (int(18 * sx), int(990 * sy)),
+        (int(18 * sx), int(1010 * sy)),
+        (int(18 * sx), int(1025 * sy)),
+        (int(727 * sx), int(990 * sy)),
+        (int(727 * sx), int(1010 * sy)),
+        (int(727 * sx), int(1025 * sy)),
+        (int(80 * sx), int(1030 * sy)),
+        (int(150 * sx), int(1030 * sy)),
+        (int(580 * sx), int(1030 * sy)),
+        (int(660 * sx), int(1030 * sy)),
+    ]
+    rgb_samples = []
+    for x, y in sample_points:
+        if 0 <= x < cw and 0 <= y < ch:
+            p = card_img.getpixel((x, y))
+            rgb_samples.append(p[:3])
+
+    if not rgb_samples:
+        return (14, 16, 20)
+
+    # Use median across sample points to reject outliers and stray text pixels
+    r = int(sorted(s[0] for s in rgb_samples)[len(rgb_samples) // 2])
+    g = int(sorted(s[1] for s in rgb_samples)[len(rgb_samples) // 2])
+    b = int(sorted(s[2] for s in rgb_samples)[len(rgb_samples) // 2])
+    return (r, g, b)
+
+
+def mask_holo_stamp(
+    draw: ImageDraw.ImageDraw,
+    stamp_type: str,
+    holo_box: Tuple[int, int, int, int],
+    bg_color: Tuple[int, int, int],
+    sx: float,
+    sy: float,
+) -> None:
+    """
+    Masks the holographic security stamp using the exact geometry for its type:
+    - 'triangle': Inverted triangle for Universes Beyond cards (flat top, downward pointing apex).
+    - 'acorn': Acorn contour for Un-set cards (top cap with center stem, tapering rounded body).
+    - 'heart': Heart contour for promotional charity cards.
+    - 'oval' (default): Standard M15 rounded oval stamp.
+    """
+    fill_color = (*bg_color, 255)
+    st = (stamp_type or "oval").lower()
+
+    if "triangle" in st:
+        # Inverted triangle: flat top at y ~= 944*sy, downward apex at x=372*sx, y ~= 988*sy
+        tri_poly = [
+            (int(334 * sx), int(944 * sy)),
+            (int(410 * sx), int(944 * sy)),
+            (int(372 * sx), int(988 * sy)),
+        ]
+        draw.polygon(tri_poly, fill=fill_color)
+    elif "acorn" in st:
+        # Acorn: Cap with center stem and tapering rounded nut
+        acorn_poly = [
+            (int(369 * sx), int(941 * sy)),
+            (int(375 * sx), int(941 * sy)),
+            (int(375 * sx), int(945 * sy)),
+            (int(408 * sx), int(948 * sy)),
+            (int(411 * sx), int(956 * sy)),
+            (int(402 * sx), int(962 * sy)),
+            (int(388 * sx), int(978 * sy)),
+            (int(372 * sx), int(988 * sy)),
+            (int(356 * sx), int(978 * sy)),
+            (int(342 * sx), int(962 * sy)),
+            (int(333 * sx), int(956 * sy)),
+            (int(336 * sx), int(948 * sy)),
+            (int(369 * sx), int(945 * sy)),
+        ]
+        draw.polygon(acorn_poly, fill=fill_color)
+    elif "heart" in st:
+        heart_poly = [
+            (int(372 * sx), int(952 * sy)),
+            (int(390 * sx), int(944 * sy)),
+            (int(408 * sx), int(950 * sy)),
+            (int(410 * sx), int(962 * sy)),
+            (int(372 * sx), int(987 * sy)),
+            (int(334 * sx), int(962 * sy)),
+            (int(336 * sx), int(950 * sy)),
+            (int(354 * sx), int(944 * sy)),
+        ]
+        draw.polygon(heart_poly, fill=fill_color)
+    else:
+        # Standard oval stamp (M15)
+        pad_x = max(1, int(2 * sx))
+        pad_y = max(1, int(2 * sy))
+        holo_ellipse = [holo_box[0] - pad_x, holo_box[1] - pad_y, holo_box[2] + pad_x, holo_box[3] + pad_y]
+        draw.ellipse(holo_ellipse, fill=fill_color)
+
+
 def create_proxy_card(
     card_frame_img: Image.Image,
     card_boxes: Optional[Dict[str, Any]] = None,
@@ -943,8 +1059,9 @@ def create_proxy_card(
 ) -> Image.Image:
     """
     Transforms a high-resolution Scryfall card scan into a print-ready MakePlayingCards proxy:
-    1. Removes the copyright, set code, artist, and collector number bar at the bottom.
-    2. Removes the silver/oval holofoil security stamp if present.
+    1. Removes the copyright, set code, artist, and collector number bar at the bottom,
+       matching the underlying card frame background color.
+    2. Removes the holofoil security stamp using proper masking geometry (oval, inverted triangle, acorn).
     3. Adds 'PROXY' in bold dark grey Arial font centered in the bottom bar space.
     4. Upscales the image to 800 DPI MakePlayingCards canvas dimensions (2184x2968)
        with 1/8" (100px) bleed margins and AI edge-preserving sharpness filters.
@@ -957,8 +1074,14 @@ def create_proxy_card(
     card_work = card_frame_img.convert("RGBA").copy()
     draw = ImageDraw.Draw(card_work)
 
-    # 1. Remove Holofoil Stamp if present (cleanly covers oval with solid black border)
+    # Sample underlying background/border color
+    bg_color = sample_border_background_color(card_frame_img, sx, sy)
+    fill_bg = (*bg_color, 255)
+
+    # 1. Remove Holofoil Stamp if present with proper geometry
     holo = boxes.get("holo_stamp")
+    stamp_type = boxes.get("stamp_type", "oval")
+
     if not holo and not boxes.get("is_borderless"):
         # Probe center-bottom region for metallic/silver security stamp
         probe_x = int(372 * sx)
@@ -971,13 +1094,9 @@ def create_proxy_card(
             pass
 
     if holo:
-        pad_x = max(1, int(2 * sx))
-        pad_y = max(1, int(2 * sy))
-        holo_ellipse = [holo[0] - pad_x, holo[1] - pad_y, holo[2] + pad_x, holo[3] + pad_y]
-        draw.ellipse(holo_ellipse, fill=(0, 0, 0, 255))
+        mask_holo_stamp(draw, stamp_type, holo, bg_color, sx, sy)
 
-    # 2. Remove Copyright / Set Number / Artist bar at the bottom
-    # Bottom margin has black card border starting below rules box (~965*sy)
+    # 2. Remove Copyright / Set Number / Artist bar at the bottom with matching background color
     stat_box = boxes.get("stat_box")
     stat_poly = boxes.get("stat_polygon")
 
@@ -989,12 +1108,12 @@ def create_proxy_card(
         stat_left = stat_box[0] if stat_box else (min(pt[0] for pt in stat_poly) if stat_poly else int(560 * sx))
         stat_bottom = stat_box[3] if stat_box else (max(pt[1] for pt in stat_poly) if stat_poly else int(984 * sy))
         # Left of stat box: blackout from below rules box (~968*sy) down to bottom
-        draw.rectangle([bar_left, int(968 * sy), stat_left, bar_bottom], fill=(0, 0, 0, 255))
+        draw.rectangle([bar_left, int(968 * sy), stat_left, bar_bottom], fill=fill_bg)
         # Below stat box across full width: blackout down to bottom
-        draw.rectangle([bar_left, max(int(978 * sy), stat_bottom), bar_right, bar_bottom], fill=(0, 0, 0, 255))
+        draw.rectangle([bar_left, max(int(978 * sy), stat_bottom), bar_right, bar_bottom], fill=fill_bg)
     else:
         # Full width blackout below rules box
-        draw.rectangle([bar_left, int(968 * sy), bar_right, bar_bottom], fill=(0, 0, 0, 255))
+        draw.rectangle([bar_left, int(968 * sy), bar_right, bar_bottom], fill=fill_bg)
 
     # 3. Add 'PROXY' text in bold Arial font, dark grey color
     font_size_card = max(14, int(20 * sy))
@@ -1048,12 +1167,12 @@ def create_proxy_card(
     t800_y = bar_mid_y_800 - th_800 // 2 - (bbox_800[1] if 'bbox_800' in locals() else 0)
     draw_enhanced.text((t800_x, t800_y), text, fill=(120, 120, 120), font=font_800)
 
-    # 5. Place card onto full 2184x2968 canvas with 100px (1/8") black bleed margins
+    # 5. Place card onto full 2184x2968 canvas with 100px (1/8") bleed margins matching frame color
     ox = (target_width - base_card_w) // 2
     oy = (target_height - base_card_h) // 2
 
-    # Black bleed canvas (standard for MTG cards on MakePlayingCards)
-    canvas = Image.new("RGB", (target_width, target_height), (0, 0, 0))
+    # Bleed canvas matching card frame border
+    canvas = Image.new("RGB", (target_width, target_height), bg_color)
     canvas.paste(card_enhanced, (ox, oy))
 
     return canvas

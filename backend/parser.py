@@ -37,12 +37,12 @@ class ParseResult(BaseModel):
 
 # Regex pattern to match: Copies CardName (set) CollectorNumber # prompt
 LINE_PATTERN = re.compile(
-    r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-\*]+)\s+#\s*(?P<prompt>.*)$"
+    r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-]+)(?:\s+[*\[(]?[A-Za-z0-9_*]+[\])]?)?\s+#\s*(?P<prompt>.*)$"
 )
 
 # Alternative regex if card info without prompt (or after split)
 CARD_SPLIT_PATTERN = re.compile(
-    r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-\*]+)\s*$"
+    r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-]+)(?:\s+[*\[(]?[A-Za-z0-9_*]+[\])]?)?\s*$"
 )
 
 
