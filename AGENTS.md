@@ -119,6 +119,10 @@ MPCWithGenerativeArt/
   3. Typography (`"PROXY"`) drawn at full 800 DPI target resolution ($56\text{ pt}$ font size).
   4. Centered on full $2184 \times 2968$ canvas with embedded 800 DPI PNG metadata.
 
+### 4. Scanner Corner Registration Artifact Removal
+- **Corner Crop Lines**: Scryfall scans (particularly Heroes of the Realm and promo sets such as `PH21`) often contain white die-cut guides, scanner ticks, or anti-aliased transparency artifacts in the 4 outer corner margins outside the rounded card radius ($R \approx 32\text{ px}$).
+- **Artifact Elimination**: `clean_card_corner_artifacts()` identifies pixels outside the rounded card arcs and stray white cut lines within the outer border margins, replacing them with the sampled `bg_color` prior to bleed expansion.
+
 ---
 
 ## Tooling and Testing

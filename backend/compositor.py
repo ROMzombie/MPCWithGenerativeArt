@@ -1050,6 +1050,63 @@ def mask_holo_stamp(
         draw.ellipse(holo_ellipse, fill=fill_color)
 
 
+def clean_card_corner_artifacts(
+    card_img: Image.Image,
+    bg_color: Tuple[int, int, int],
+    sx: float,
+    sy: float,
+) -> Image.Image:
+    """
+    Cleans scanner crop marks, registration ticks, and white corner artifacts
+    from the 4 outer corner margins of the card frame, replacing them with bg_color.
+    """
+    w, h = card_img.size
+    img_work = card_img.convert("RGBA").copy()
+    fill_col = (*bg_color, 255)
+
+    corner_r = int(32 * sx)
+    c_w = int(55 * sx)
+    c_h = int(55 * sy)
+
+    corners = [
+        # (name, x_range, y_range, orig_x, orig_y)
+        ("TL", range(0, c_w), range(0, c_h), 0, 0),
+        ("TR", range(w - c_w, w), range(0, c_h), w, 0),
+        ("BL", range(0, c_w), range(h - c_h, h), 0, h),
+        ("BR", range(w - c_w, w), range(h - c_h, h), w, h),
+    ]
+
+    bg_brightness = sum(bg_color[:3]) / 3.0
+    for name, xr, yr, orig_x, orig_y in corners:
+        arc_cx = corner_r if orig_x == 0 else (w - corner_r)
+        arc_cy = corner_r if orig_y == 0 else (h - corner_r)
+        for y in yr:
+            for x in xr:
+                in_corner_quad = (x < corner_r if orig_x == 0 else x >= w - corner_r) and \
+                                 (y < corner_r if orig_y == 0 else y >= h - corner_r)
+
+                if in_corner_quad:
+                    dist_to_center = ((x - arc_cx)**2 + (y - arc_cy)**2)**0.5
+                    # If outside the rounded card arc:
+                    if dist_to_center > corner_r - 1:
+                        img_work.putpixel((x, y), fill_col)
+                        continue
+
+                # Also check for stray white/light crop lines in the outer 28px border margin
+                in_outer_margin = (
+                    x < int(28 * sx) or x >= w - int(28 * sx) or 
+                    y < int(28 * sy) or y >= h - int(28 * sy)
+                )
+                if in_outer_margin:
+                    p = img_work.getpixel((x, y))
+                    p_bright = sum(p[:3]) / 3.0
+                    # If significantly brighter than background (e.g. white cut line)
+                    if p_bright > max(75, bg_brightness + 40):
+                        img_work.putpixel((x, y), fill_col)
+
+    return img_work
+
+
 def create_proxy_card(
     card_frame_img: Image.Image,
     card_boxes: Optional[Dict[str, Any]] = None,
@@ -1061,9 +1118,10 @@ def create_proxy_card(
     Transforms a high-resolution Scryfall card scan into a print-ready MakePlayingCards proxy:
     1. Removes the copyright, set code, artist, and collector number bar at the bottom,
        matching the underlying card frame background color.
-    2. Removes the holofoil security stamp using proper masking geometry (oval, inverted triangle, acorn).
-    3. Adds 'PROXY' in bold dark grey Arial font centered in the bottom bar space.
-    4. Upscales the image to 800 DPI MakePlayingCards canvas dimensions (2184x2968)
+    2. Cleans white corner registration marks and scanner cut artifacts with the background color.
+    3. Removes the holofoil security stamp using proper masking geometry (oval, inverted triangle, acorn).
+    4. Adds 'PROXY' in bold dark grey Arial font centered in the bottom bar space.
+    5. Upscales the image to 800 DPI MakePlayingCards canvas dimensions (2184x2968)
        with 1/8" (100px) bleed margins and AI edge-preserving sharpness filters.
     """
     cw, ch = card_frame_img.size
@@ -1071,12 +1129,14 @@ def create_proxy_card(
     sy = ch / 1040.0
 
     boxes = card_boxes if card_boxes is not None else detect_card_boxes(card_frame_img)
-    card_work = card_frame_img.convert("RGBA").copy()
-    draw = ImageDraw.Draw(card_work)
 
     # Sample underlying background/border color
     bg_color = sample_border_background_color(card_frame_img, sx, sy)
     fill_bg = (*bg_color, 255)
+
+    # Clean corner scanner marks, cut registration lines, and corner artifacts
+    card_work = clean_card_corner_artifacts(card_frame_img, bg_color, sx, sy)
+    draw = ImageDraw.Draw(card_work)
 
     # 1. Remove Holofoil Stamp if present with proper geometry
     holo = boxes.get("holo_stamp")

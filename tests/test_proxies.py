@@ -180,6 +180,33 @@ class TestProxyPipeline(unittest.IsolatedAsyncioTestCase):
         bleed_pixel = proxy_result.getpixel((20, 20))
         self.assertEqual(bleed_pixel, custom_bg)
 
+    def test_corner_artifact_removal(self):
+        # Card image with white corner scanner crop marks in all 4 corners
+        card_img = Image.new("RGB", (self.card_w, self.card_h), (20, 20, 25))
+        draw = ImageDraw.Draw(card_img)
+        # Draw white registration arcs in all 4 corners
+        draw.arc([0, 0, 48, 48], start=0, end=360, fill=(255, 255, 255), width=3)
+        draw.arc([self.card_w - 48, 0, self.card_w, 48], start=0, end=360, fill=(255, 255, 255), width=3)
+        draw.arc([0, self.card_h - 48, 48, self.card_h], start=0, end=360, fill=(255, 255, 255), width=3)
+        draw.arc([self.card_w - 48, self.card_h - 48, self.card_w, self.card_h], start=0, end=360, fill=(255, 255, 255), width=3)
+
+        proxy_result = create_proxy_card(card_img)
+        self.assertIsNotNone(proxy_result)
+
+        # Check that corners on the scaled card are cleaned and filled with background color
+        cut_w = int(MPC_800DPI_WIDTH * (1984 / 2184))
+        cut_h = int(MPC_800DPI_HEIGHT * (2768 / 2968))
+        ox = (MPC_800DPI_WIDTH - cut_w) // 2
+        oy = (MPC_800DPI_HEIGHT - cut_h) // 2
+
+        # Check top-left corner point
+        tl_pixel = proxy_result.getpixel((ox + 5, oy + 5))
+        self.assertLess(sum(tl_pixel[:3]), 100)
+
+        # Check top-right corner point
+        tr_pixel = proxy_result.getpixel((ox + cut_w - 5, oy + 5))
+        self.assertLess(sum(tr_pixel[:3]), 100)
+
     def test_bold_arial_font_resolution(self):
         font = get_bold_arial_font(32)
         self.assertIsNotNone(font)
