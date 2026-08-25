@@ -12,7 +12,8 @@ MPCWithGenerativeArt creates full-art card decks for [MakePlayingCards](https://
 
 ## Features
 
-- **Deck List Parser**: Reads standard deck lists with card prompts and `# global style prompt` prefixes.
+- **Deck List Parser**: Reads standard deck lists with card prompts, prompt-free proxy lists, and `# global style prompt` prefixes. Supports Moxfield and Archidekt exports with trailing foil markers (e.g. `*F*`).
+- **"Just Proxies" 800 DPI Mode**: Retrieves high-resolution card scans from Scryfall, removes copyright lines and holofoil stamps (with oval, inverted triangle, and acorn masks), adds a dark grey Arial `"PROXY"` mark, and upscales to 800 DPI with MakePlayingCards bleed margins.
 - **Multi-Provider AI Image Generation**: Connects to xAI Grok, Google Gemini Imagen, OpenAI DALL-E, DeepSeek Janus-Pro, Perchance AI, and local procedural generation.
 - **Card Frame and Bleed Compositing**: Extracts high-resolution card frames, masks art windows, preserves text boxes, and applies standard MakePlayingCards 800 DPI poker bleed margins (2184x2968 px).
 - **Interactive Web Interface**: Provides real-time preview grids, progress streaming via Server-Sent Events, and per-card prompt editing.
@@ -131,17 +132,16 @@ uvicorn backend.app:app --reload --port 8000
 
 ## Deck File Input Format
 
-The application accepts deck lists with `#`-separated prompts.
+The application accepts standard deck lists with or without prompts.
 
-### Format Definition
+### 1. Generative Art Mode Format
 
 ```text
 # [Optional global style prompt applied to all cards]
 Copies CardName (set) CollectorNumber # prompt
 ```
 
-### Example Input
-
+**Example:**
 ```text
 # in watercolor studio ghibli fantasy anime style
 1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie
@@ -149,12 +149,40 @@ Copies CardName (set) CollectorNumber # prompt
 2 Animate Dead (SLD) 2189 # An old man in an anime style holding his hand up with a magic sphere
 ```
 
+### 2. Just Proxies Mode Format
+
+Prompts are optional when generating pure proxies. Deck exports from Moxfield, Archidekt, and MTGO (including trailing foil tags like `*F*`) are supported directly.
+
+```text
+1 Byode, Inverse Sun (PH21) 3
+1 All-Seeing Toby (SLD) 2695
+1 Cid, Freeflier Pilot (FIC) 13
+1 Smothering Tithe (SLD) 7009 *F*
+```
+
 - **Copies**: The quantity of cards to print.
 - **CardName**: The card title matching Scryfall.
 - **(set)**: The 3-character or 4-character MTG set code in parentheses.
 - **CollectorNumber**: The card collector number.
-- **prompt**: The prompt for the background image. Separate this prompt from the collector number with ` # `.
-- **Global Prompt (`# ...`)**: An optional style prefix at the top of the file. The generator prepends this text to every card prompt.
+- **prompt**: (Optional) Prompt for background art. Separated by ` # ` or Tab.
+- **Global Prompt (`# ...`)**: Optional style prefix at the top of the file.
+
+---
+
+## Just Proxies Mode
+
+Clicking the **"🎴 Just Proxies"** button processes cards through the proxy rendering pipeline:
+
+1. **High-Resolution Scryfall Ingestion**: Retrieves the lossless `.png` scan directly from Scryfall's CDN.
+2. **Background Color Matching**: Dynamically samples the card's native border color from unprinted margins so infill matches off-black, slate, or colored frames.
+3. **Copyright & Set Strip Removal**: Removes the bottom text strip containing copyright, artist credit, set code, and collector numbers while preserving creature stat badges and planeswalker loyalty shields.
+4. **Geometrical Security Stamp Masking**: Masks holographic security stamps using their exact geometry:
+   - **Oval**: Standard M15 frames and Secret Lair Drop cards.
+   - **Inverted Triangle**: Universes Beyond cards (Warhammer 40k, Fallout, Assassin's Creed, Final Fantasy, Marvel, Lord of the Rings commander promos).
+   - **Acorn**: Un-sets and Unfinity cards.
+   - **Heart**: Promotional charity cards.
+5. **PROXY Label Overlay**: Centers bold dark grey Arial text `"PROXY"` in the bottom border.
+6. **800 DPI Print Upscaling**: Upscales the card using Lanczos resampling and AI unsharp-mask edge sharpening (`radius=1.5, percent=120, threshold=3`) to MakePlayingCards poker dimensions (2184x2968 px at 800 DPI) with 1/8" bleed margins.
 
 ---
 
@@ -198,6 +226,7 @@ Configure these settings through environment variables or inside your `.env` fil
 MakePlayingCards poker cards require standard bleed margins.
 
 - **Target Output Dimensions**: 2184 x 2968 pixels at 800 DPI (69.3 mm x 94.2 mm).
+- **Physical Card Cut**: 1984 x 2768 pixels with 100px (1/8") bleed on all four sides.
 - **Bleed Scaling Factor**: `0.90` (5% outer border margin).
 - **Text Box Exclusion**: The compositor detects title bars, type lines, rules boxes, power and toughness badges, and loyalty badges. The compositor preserves these elements over the generated background art.
 - **Edge Feathering**: The compositor softens text box cutouts to blend borders with generative art.
@@ -225,5 +254,5 @@ When card generation completes, export your order using three options:
 Run the test suite with the Python `unittest` runner:
 
 ```bash
-python -m unittest tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py
+python -m unittest tests/test_proxies.py tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py
 ```

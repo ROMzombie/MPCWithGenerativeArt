@@ -57,9 +57,12 @@ MPCWithGenerativeArt/
 
 1. **`backend/parser.py`**:
    - Parses deck lines formatted as `[Copies] [CardName] ([SetCode]) [CollectorNumber] # [Prompt]`.
+   - Supports prompt-free deck lists (`require_prompt=False`) for proxy generation.
    - Extracts top-level `# [global style prompt]` lines and combines them with card prompts.
+   - Handles trailing export tags (e.g. `*F*`, `*E*`, `*Foil*`) from Moxfield and Archidekt.
 2. **`backend/scryfall.py`**:
    - Queries Scryfall REST API by set code and collector number.
+   - Captures card frame metadata (`security_stamp`, `frame_effects`, `border_color`, `type_line`).
    - Caches frame images (`.png`) and official art crops (`.jpg`) locally in `cache/scryfall/` to respect Scryfall rate limits.
 3. **`backend/generator.py`**:
    - Abstract base class `BaseImageGenerator` with pluggable backends:
@@ -71,15 +74,50 @@ MPCWithGenerativeArt/
      - `MockProceduralGenerator` (Deterministic offline fallback)
    - Configurable timeout and read timeout controls with graceful fallback hierarchy.
 4. **`backend/compositor.py`**:
-   - Locates art box bounding box using multi-scale sliding-window template search.
-   - Identifies card layout type (Creature, Planeswalker, Battle, Showcase, Inverted, Borderless).
-   - Generates precision binary exclusion mask for title bars, type lines, rules boxes, and stats badges.
-   - Applies soft box-blur edge feathering.
-   - Scales card frames by `0.90` (5% bleed margin) and renders at MakePlayingCards standard 800 DPI poker dimensions (2184x2968 pixels).
+   - **Generative Art Compositing**:
+     - Locates art box bounding box using multi-scale sliding-window template search.
+     - Identifies card layout type (Creature, Planeswalker, Battle, Showcase, Inverted, Borderless).
+     - Generates precision binary exclusion mask for title bars, type lines, rules boxes, and stats badges.
+     - Applies soft box-blur edge feathering.
+     - Scales card frames by `0.90` (5% bleed margin) and renders at MakePlayingCards standard 800 DPI poker dimensions (2184x2968 pixels).
+   - **Just Proxies Processing (`create_proxy_card`)**:
+     - Removes bottom copyright, artist, set code, and collector number text bar while preserving creature stat boxes and loyalty shields.
+     - Samples card border background color (`sample_border_background_color`) to match native card frame tones.
+     - Masks holographic security stamps (`mask_holo_stamp`) according to shape: oval, inverted triangle, acorn, or heart.
+     - Renders dark grey (`RGB(120, 120, 120)`) bold Arial `"PROXY"` text centered in the bottom bar space.
+     - Upscales via Lanczos resampling and AI unsharp-masking to 800 DPI print canvas with 1/8" bleed margins.
 5. **`backend/mpc_autofill.py`**:
    - Generates `cards.xml` adhering to MakePlayingCards autofill standards.
    - Packages ZIP files containing XML and print-ready card images.
    - Serves the in-browser MakePlayingCards injector script.
+
+---
+
+## Proxy Engine Architecture & Design Decisions
+
+### 1. Authoritative Scryfall Security Stamp Metadata
+- **Scryfall Metadata as Single Source of Truth**: Scryfall provides `security_stamp` values (`oval`, `triangle`, `acorn`, `heart`).
+- **Stamp Shapes**:
+  - `oval`: Standard M15 cards and Secret Lair Drop cards (e.g. *All-Seeing Toby*).
+  - `triangle`: Universes Beyond cards (e.g. *Warhammer 40k*, *Fallout*, *Assassin's Creed*, *Final Fantasy*, *Marvel*).
+  - `acorn`: Un-sets and non-tournament legal cards (*Unfinity*).
+  - `heart`: Promotional charity cards (*Extra Life*).
+- **Rule**: Do not override `security_stamp` metadata with heuristic pixel probes. Light textbox parchment directly above the stamp can trigger false triangle classifications.
+
+### 2. Dynamic Border Background Sampling
+- **Avoid Pure `#000000` Infill**: MTG card frames often use off-black charcoal (`RGB(14, 16, 20)`), slate, silver, or colored borders.
+- **Margin Sampling**: `sample_border_background_color()` samples unprinted margin coordinates (left, right, and bottom lip) and computes the median RGB.
+- **Seamless Blending**: The sampled color fills the bottom copyright blackout, the stamp mask, and the 800 DPI bleed canvas.
+
+### 3. MakePlayingCards 800 DPI Print Standards
+- **Canvas Dimensions**: $2184 \times 2968$ pixels at 800 DPI ($69.3\text{ mm} \times 94.2\text{ mm}$).
+- **Physical Card Cut**: $1984 \times 2768$ pixels ($63.0\text{ mm} \times 88.0\text{ mm}$).
+- **Bleed Margin**: Standard $1/8\text{ inch}$ (100 pixels on all four sides).
+- **Resampling & Edge Sharpening**:
+  1. Card frame scaled to physical cut dimensions using Lanczos interpolation.
+  2. Enhanced with `ImageFilter.UnsharpMask(radius=1.5, percent=120, threshold=3)` and $1.10\times$ sharpness multiplier.
+  3. Typography (`"PROXY"`) drawn at full 800 DPI target resolution ($56\text{ pt}$ font size).
+  4. Centered on full $2184 \times 2968$ canvas with embedded 800 DPI PNG metadata.
 
 ---
 
@@ -89,7 +127,7 @@ MPCWithGenerativeArt/
 Execute the test suite using Python's built-in `unittest` runner:
 
 ```bash
-python -m unittest tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py
+python -m unittest tests/test_proxies.py tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py
 ```
 
 ### Environment Configuration
