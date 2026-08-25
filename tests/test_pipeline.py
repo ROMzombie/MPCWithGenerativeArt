@@ -20,6 +20,8 @@ from backend.compositor import (
     save_card_outputs,
     MPC_800DPI_WIDTH,
     MPC_800DPI_HEIGHT,
+    MPC_CUT_WIDTH,
+    MPC_CUT_HEIGHT,
     MPC_BLEED_SCALE,
 )
 from backend.mpc_autofill import generate_mpc_xml, create_mpc_zip_bundle, calculate_mpc_bracket
@@ -462,7 +464,56 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
             comp = composite_card(c_img, art, card_boxes=c_boxes)
             self.assertEqual(comp.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
 
+    async def test_transparent_text_boxes_compositor(self):
+        # 1. Fetch a card frame
+        card_data = await scryfall_client.get_card("ph21", "3", "Byode, Inverse Sun")
+        card_img = Image.open(card_data.cached_png_path).convert("RGB")
+        cw, ch = card_img.size
+        boxes = detect_card_boxes(card_img, type_line=card_data.type_line)
+
+        # 2. Create distinct bright background art (e.g. solid magenta RGB 255, 0, 255)
+        bright_art = Image.new("RGB", (cw, ch), (255, 0, 255))
+
+        # 3. Composite with transparent_text_boxes=False (default opaque)
+        comp_opaque = composite_card(
+            card_frame_img=card_img,
+            generated_art_img=bright_art,
+            card_boxes=boxes,
+            transparent_text_boxes=False,
+        )
+
+        # 4. Composite with transparent_text_boxes=True (20% transparency / 80% opacity)
+        comp_transparent = composite_card(
+            card_frame_img=card_img,
+            generated_art_img=bright_art,
+            card_boxes=boxes,
+            transparent_text_boxes=True,
+        )
+
+        self.assertEqual(comp_opaque.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
+        self.assertEqual(comp_transparent.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
+
+        # Sample pixel from the rules text box area
+        rx1, ry1, rx2, ry2 = boxes["rules_box"]
+        # Map to canvas coordinates
+        scale_x = (MPC_800DPI_WIDTH * (MPC_CUT_WIDTH / MPC_800DPI_WIDTH)) / cw
+        scale_y = (MPC_800DPI_HEIGHT * (MPC_CUT_HEIGHT / MPC_800DPI_HEIGHT)) / ch
+        ox = (MPC_800DPI_WIDTH - int(cw * scale_x)) // 2
+        oy = (MPC_800DPI_HEIGHT - int(ch * scale_y)) // 2
+        sample_x = int(((rx1 + rx2) // 2) * scale_x + ox)
+        sample_y = int(((ry1 + ry2) // 2) * scale_y + oy)
+
+        pixel_opaque = comp_opaque.getpixel((sample_x, sample_y))
+        pixel_transparent = comp_transparent.getpixel((sample_x, sample_y))
+
+        # In transparent mode, the background magenta (R=255, G=0, B=255) must blend through
+        # by approximately 20%, causing R and B to increase or differ predictably from opaque
+        expected_r = int(pixel_opaque[0] * 0.80 + 255 * 0.20)
+        self.assertAlmostEqual(pixel_transparent[0], expected_r, delta=3)
+        self.assertNotEqual(pixel_opaque, pixel_transparent)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

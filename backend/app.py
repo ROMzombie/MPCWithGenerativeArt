@@ -88,6 +88,9 @@ class AppState:
         self.gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
         self.openai_api_key: str = os.environ.get("OPENAI_API_KEY", "")
         self.xai_api_key: str = os.environ.get("XAI_API_KEY", "") or os.environ.get("GROK_API_KEY", "")
+        self.transparent_text_boxes: bool = (
+            os.environ.get("TRANSPARENT_TEXT_BOXES", "false").strip().lower() in ("true", "1", "yes")
+        )
         
         env_provider = os.environ.get("GENERATOR_PROVIDER") or os.environ.get("ART_GENERATOR") or os.environ.get("PROVIDER")
         if env_provider:
@@ -147,6 +150,7 @@ class SettingsModel(BaseModel):
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     xai_api_key: Optional[str] = None
+    transparent_text_boxes: Optional[bool] = None
 
 
 
@@ -316,6 +320,7 @@ async def process_single_card(card: CardItem):
             card_boxes=card_boxes,
             card_scale=MPC_BLEED_SCALE,
             target_dpi=800,
+            transparent_text_boxes=state.transparent_text_boxes,
         )
 
         # 5. Save outputs
@@ -623,6 +628,7 @@ async def get_settings():
         "gemini_api_key": state.gemini_api_key,
         "openai_api_key": state.openai_api_key,
         "xai_api_key": state.xai_api_key,
+        "transparent_text_boxes": state.transparent_text_boxes,
         "has_hf_token": bool(state.hf_token),
         "has_gemini_key": bool(state.gemini_api_key),
         "has_openai_key": bool(state.openai_api_key),
@@ -686,6 +692,14 @@ async def update_settings(settings: SettingsModel):
                     set_key(str(target_env), "XAI_API_KEY", state.xai_api_key)
                 except Exception:
                     pass
+
+        if settings.transparent_text_boxes is not None:
+            state.transparent_text_boxes = bool(settings.transparent_text_boxes)
+            os.environ["TRANSPARENT_TEXT_BOXES"] = str(state.transparent_text_boxes).lower()
+            try:
+                set_key(str(target_env), "TRANSPARENT_TEXT_BOXES", str(state.transparent_text_boxes).lower())
+            except Exception:
+                pass
     else:
         if settings.hf_token is not None:
             state.hf_token = settings.hf_token.strip()
@@ -703,9 +717,14 @@ async def update_settings(settings: SettingsModel):
             state.xai_api_key = settings.xai_api_key.strip()
             os.environ["XAI_API_KEY"] = state.xai_api_key
 
+        if settings.transparent_text_boxes is not None:
+            state.transparent_text_boxes = bool(settings.transparent_text_boxes)
+            os.environ["TRANSPARENT_TEXT_BOXES"] = str(state.transparent_text_boxes).lower()
+
     return {
         "status": "updated",
         "provider": state.provider,
+        "transparent_text_boxes": state.transparent_text_boxes,
         "has_hf_token": bool(state.hf_token),
         "has_gemini_key": bool(state.gemini_api_key),
         "has_openai_key": bool(state.openai_api_key),

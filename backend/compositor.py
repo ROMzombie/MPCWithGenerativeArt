@@ -665,6 +665,7 @@ def composite_full_art_card(
     target_dpi: int = 800,
     target_width: int = MPC_800DPI_WIDTH,
     target_height: int = MPC_800DPI_HEIGHT,
+    transparent_text_boxes: bool = False,
 ) -> Image.Image:
     """
     Composites a full-art background image with individually masked card rules, title bar,
@@ -763,7 +764,7 @@ def composite_full_art_card(
         centering=(0.5, 0.33),
     )
 
-    composite = art_full.copy()
+    card_layer = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
     pill_radius = max(4, int(29 * (eff_card_h / 1040.0)))
     rules_radius = max(4, int(10 * (eff_card_w / 745.0)))
     stat_radius = max(4, int(26 * (eff_card_h / 1040.0)))
@@ -775,43 +776,46 @@ def composite_full_art_card(
     if sub_poly:
         td.polygon(sub_poly, fill=255)
     t_mask = t_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
-    composite.paste(card_canvas, (0, 0), t_mask)
+    card_layer.paste(card_canvas, (0, 0), t_mask)
 
     # 2. Composite Type Line Box
-    typ_mask = Image.new("L", (target_width, target_height), 0)
-    typd = ImageDraw.Draw(typ_mask)
-    typd.rounded_rectangle(typ, radius=pill_radius, fill=255)
-    typ_mask = typ_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
-    composite.paste(card_canvas, (0, 0), typ_mask)
+    if not is_borderless:
+        typ_mask = Image.new("L", (target_width, target_height), 0)
+        typd = ImageDraw.Draw(typ_mask)
+        typd.rounded_rectangle(typ, radius=pill_radius, fill=255)
+        typ_mask = typ_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
+        card_layer.paste(card_canvas, (0, 0), typ_mask)
 
     # 3. Composite Rules Text Box & Station Circles & Holo Stamp Crest
     if is_borderless:
-        cdraw = ImageDraw.Draw(composite)
+        # On borderless cards, the type line and rules box form a single unified translucent panel
+        full_rb = (rb[0], min(typ[1], rb[1]), rb[2], rb[3])
+        cdraw = ImageDraw.Draw(card_layer)
         if stat_poly or sb:
-            pt_left = stat_poly[6][0] if (stat_poly and len(stat_poly) > 6) else (sb[0] if sb else rb[2])
-            pt_top = stat_poly[0][1] if stat_poly else (sb[1] if sb else rb[3])
+            pt_left = stat_poly[6][0] if (stat_poly and len(stat_poly) > 6) else (sb[0] if sb else full_rb[2])
+            pt_top = stat_poly[0][1] if stat_poly else (sb[1] if sb else full_rb[3])
             notch_offset = int(6 * (eff_card_h / 1040.0))
             rb_poly = [
-                (rb[0], rb[1]),
-                (rb[2], rb[1]),
-                (rb[2], pt_top + notch_offset),
+                (full_rb[0], full_rb[1]),
+                (full_rb[2], full_rb[1]),
+                (full_rb[2], pt_top + notch_offset),
                 (pt_left, pt_top + notch_offset),
-                (pt_left, rb[3]),
-                (rb[0], rb[3]),
+                (pt_left, full_rb[3]),
+                (full_rb[0], full_rb[3]),
             ]
             cdraw.polygon(rb_poly, fill=(16, 18, 22, 235))
             cdraw.line([
-                (rb[0], rb[3]),
-                (rb[0], rb[1]),
-                (rb[2], rb[1]),
-                (rb[2], pt_top + notch_offset),
+                (full_rb[0], full_rb[3]),
+                (full_rb[0], full_rb[1]),
+                (full_rb[2], full_rb[1]),
+                (full_rb[2], pt_top + notch_offset),
             ], fill=(60, 65, 75, 255), width=2)
             cdraw.line([
-                (rb[0], rb[3]),
-                (pt_left, rb[3]),
+                (full_rb[0], full_rb[3]),
+                (pt_left, full_rb[3]),
             ], fill=(60, 65, 75, 255), width=2)
         else:
-            cdraw.rounded_rectangle(rb, radius=rules_radius, fill=(16, 18, 22, 235), outline=(60, 65, 75, 255), width=2)
+            cdraw.rounded_rectangle(full_rb, radius=rules_radius, fill=(16, 18, 22, 235), outline=(60, 65, 75, 255), width=2)
 
         for circ in station_circles:
             cdraw.ellipse([circ[0], circ[1], circ[2], circ[3]], fill=(16, 18, 22, 235), outline=(60, 65, 75, 255), width=2)
@@ -819,23 +823,23 @@ def composite_full_art_card(
         if holo_stamp:
             cdraw.ellipse([holo_stamp[0], holo_stamp[1], holo_stamp[2], holo_stamp[3]], fill=(16, 18, 22, 235), outline=(60, 65, 75, 255), width=2)
 
-        # Crop rules box region from card canvas
-        rules_crop = card_canvas.crop(rb)
+        # Crop unified rules + type line region from card canvas
+        rules_crop = card_canvas.crop(full_rb)
         gray = rules_crop.convert("L")
         text_mask = gray.point(lambda p: 255 if p > 130 else int(max(0, (p - 75) * 4.5)))
-        composite.paste(rules_crop, (rb[0], rb[1]), text_mask)
+        card_layer.paste(rules_crop, (full_rb[0], full_rb[1]), text_mask)
 
         for circ in station_circles:
             circ_crop = card_canvas.crop(circ)
             circ_gray = circ_crop.convert("L")
             circ_mask = circ_gray.point(lambda p: 255 if p > 130 else int(max(0, (p - 75) * 4.5)))
-            composite.paste(circ_crop, (circ[0], circ[1]), circ_mask)
+            card_layer.paste(circ_crop, (circ[0], circ[1]), circ_mask)
 
         if holo_stamp:
             holo_crop = card_canvas.crop(holo_stamp)
             holo_gray = holo_crop.convert("L")
             holo_mask = holo_gray.point(lambda p: 255 if p > 130 else int(max(0, (p - 75) * 4.5)))
-            composite.paste(holo_crop, (holo_stamp[0], holo_stamp[1]), holo_mask)
+            card_layer.paste(holo_crop, (holo_stamp[0], holo_stamp[1]), holo_mask)
     else:
         # Standard opaque rules box + station circle badges + holo stamp crest
         rb_mask = Image.new("L", (target_width, target_height), 0)
@@ -850,7 +854,7 @@ def composite_full_art_card(
         if holo_stamp:
             rbd.ellipse([holo_stamp[0], holo_stamp[1], holo_stamp[2], holo_stamp[3]], fill=255)
         rb_mask = rb_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
-        composite.paste(card_canvas, (0, 0), rb_mask)
+        card_layer.paste(card_canvas, (0, 0), rb_mask)
 
     # 4. Composite Extra Boxes (e.g. Room Door 2 / Dual Spells)
     for eb in extra_boxes:
@@ -862,7 +866,7 @@ def composite_full_art_card(
         else:
             ebd.rounded_rectangle(b, radius=rules_radius, fill=255)
         eb_mask = eb_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
-        composite.paste(card_canvas, (0, 0), eb_mask)
+        card_layer.paste(card_canvas, (0, 0), eb_mask)
 
     # 5. Composite Statistic Box (Power/Toughness, Loyalty Shield, or Defense Badge)
     if stat_poly:
@@ -870,14 +874,21 @@ def composite_full_art_card(
         spd = ImageDraw.Draw(sp_mask)
         spd.polygon(stat_poly, fill=255)
         sp_mask = sp_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
-        composite.paste(card_canvas, (0, 0), sp_mask)
+        card_layer.paste(card_canvas, (0, 0), sp_mask)
     elif sb:
         sb_mask = Image.new("L", (target_width, target_height), 0)
         sbd = ImageDraw.Draw(sb_mask)
         sbd.rounded_rectangle(sb, radius=stat_radius, fill=255)
         sb_mask = sb_mask.filter(ImageFilter.GaussianBlur(radius=1.0))
-        composite.paste(card_canvas, (0, 0), sb_mask)
+        card_layer.paste(card_canvas, (0, 0), sb_mask)
 
+    if transparent_text_boxes:
+        # Reduce opacity of all existing card elements by 20% (scale alpha to 80%)
+        r, g, b, a = card_layer.split()
+        a = a.point(lambda p: int(p * 0.80))
+        card_layer.putalpha(a)
+
+    composite = Image.alpha_composite(art_full, card_layer)
     return composite.convert("RGB")
 
 
@@ -890,6 +901,7 @@ def composite_card(
     target_dpi: int = 800,
     target_width: int = MPC_800DPI_WIDTH,
     target_height: int = MPC_800DPI_HEIGHT,
+    transparent_text_boxes: bool = False,
 ) -> Image.Image:
     """
     Unified card compositor that performs full-art background placement
@@ -915,6 +927,7 @@ def composite_card(
         target_dpi=target_dpi,
         target_width=target_width,
         target_height=target_height,
+        transparent_text_boxes=transparent_text_boxes,
     )
 
 

@@ -2,9 +2,10 @@
  * MPCWithGenerativeArt - Interactive Client Application
  */
 
-const SAMPLE_DECK = `1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie
-1 All-Seeing Toby (SLD) 2695 # An anime boy in a library holding a book
-1 Animate Dead (SLD) 2189 # An old man in an anime style holding his hand up with a magic sphere surroundning him`;
+const SAMPLE_DECK = `# chibi anime character, bright colors, simple graphics, no gradients
+1 Byode, Inverse Sun (PH21) 3 # An girl dressed like a pixie
+1 All-Seeing Toby (SLD) 2695 # An boy in a library holding a book
+1 Animate Dead (SLD) 2189 # An old man holding his hand up with a magic sphere surrounding him`;
 
 // Application state
 let currentCards = [];
@@ -342,8 +343,6 @@ function createCardElementHTML(card) {
   const isReady = card.status === "ready";
   const isProxyMode = card.mode === "proxy" || currentMode === "proxy";
   const imgSrc = isReady ? `/api/cards/${card.id}/thumb?t=${Date.now()}` : "";
-  const placeholderText = card.status_message || (isReady ? "Card Rendered" : "Queued...");
-  const showStatusMsg = !isReady && card.status_message && card.status_message.trim().length > 0;
 
   return `
     <div class="card-item" id="card-elem-${card.id}">
@@ -352,8 +351,7 @@ function createCardElementHTML(card) {
           isReady
             ? `<img src="${imgSrc}" class="card-preview-img" alt="${escapeHtml(card.card_name)}" />`
             : `<div style="padding: 2rem; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
-                <div class="spinner" style="margin-bottom: 0.5rem;"></div>
-                <div>${escapeHtml(placeholderText)}</div>
+                <div class="spinner"></div>
               </div>`
         }
         <span class="card-overlay-copies">${card.copies}x</span>
@@ -366,7 +364,7 @@ function createCardElementHTML(card) {
           <span class="card-status-badge status-${card.status}">${escapeHtml(card.status)}</span>
         </div>
 
-        ${showStatusMsg ? `<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">${escapeHtml(card.status_message)}</div>` : ""}
+        ${card.status === "error" && card.status_message ? `<div style="font-size: 0.8rem; color: #ef4444; margin-bottom: 0.5rem;">${escapeHtml(card.status_message)}</div>` : ""}
 
         ${
           !isProxyMode
@@ -559,6 +557,10 @@ async function loadSettings() {
     if (data.openai_api_key) {
       document.getElementById("openaiApiKey").value = data.openai_api_key;
     }
+    const transparentCheckbox = document.getElementById("transparentTextBoxes");
+    if (transparentCheckbox) {
+      transparentCheckbox.checked = Boolean(data.transparent_text_boxes);
+    }
   } catch (e) {}
 }
 
@@ -572,12 +574,21 @@ async function saveSettings() {
   const hf_token = document.getElementById("hfToken").value;
   const gemini_api_key = document.getElementById("geminiApiKey").value;
   const openai_api_key = document.getElementById("openaiApiKey").value;
+  const transparentCheckbox = document.getElementById("transparentTextBoxes");
+  const transparent_text_boxes = transparentCheckbox ? transparentCheckbox.checked : false;
 
   try {
     await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, xai_api_key, hf_token, gemini_api_key, openai_api_key }),
+      body: JSON.stringify({
+        provider,
+        xai_api_key,
+        hf_token,
+        gemini_api_key,
+        openai_api_key,
+        transparent_text_boxes,
+      }),
     });
     alert("Settings saved successfully!");
     document.getElementById("settingsModal").classList.remove("active");

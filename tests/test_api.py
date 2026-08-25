@@ -292,6 +292,28 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertIn("MPC Art Injector", resp.text)
         self.assertEqual(resp.headers.get("access-control-allow-origin"), "*")
 
+    def test_settings_transparent_text_boxes_endpoint(self):
+        # 1. Check GET /api/settings has transparent_text_boxes
+        get_resp = client.get("/api/settings")
+        self.assertEqual(get_resp.status_code, 200)
+        data = get_resp.json()
+        self.assertIn("transparent_text_boxes", data)
+
+        # 2. Update transparent_text_boxes to True
+        post_resp = client.post("/api/settings", json={"transparent_text_boxes": True})
+        self.assertEqual(post_resp.status_code, 200)
+        post_data = post_resp.json()
+        self.assertTrue(post_data["transparent_text_boxes"])
+
+        # 3. Verify updated setting in GET
+        verify_resp = client.get("/api/settings")
+        self.assertTrue(verify_resp.json()["transparent_text_boxes"])
+
+        # 4. Revert to False
+        revert_resp = client.post("/api/settings", json={"transparent_text_boxes": False})
+        self.assertEqual(revert_resp.status_code, 200)
+        self.assertFalse(revert_resp.json()["transparent_text_boxes"])
+
 
 if __name__ == "__main__":
     unittest.main()

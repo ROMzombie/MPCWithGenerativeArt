@@ -49,7 +49,13 @@
       </p>
 
       <div class="code-format-tip">
-        Format: Copies CardName (set) CollectorNumber # prompt (or without prompt for Just Proxies)
+        <div style="font-weight: 600; margin-bottom: 0.35rem;">Supported Deck Formats:</div>
+        <div>• <code>[Copies] [CardName] ([SetCode]) [CollectorNumber] # [Prompt]</code> <span style="color: var(--text-secondary);">(Generative Art)</span></div>
+        <div>• <code># [global style prompt]</code> <span style="color: var(--text-secondary);">(Top-level style prepended to all card prompts)</span></div>
+        <div>• <code>[Copies] [CardName] ([SetCode]) [CollectorNumber]</code> <span style="color: var(--text-secondary);">(Just Proxies or Moxfield / Archidekt exports)</span></div>
+        <div style="margin-top: 0.4rem; font-size: 0.8rem; color: var(--text-secondary);">
+          <strong>Supported Layout Types:</strong> Standard Frames, Full-Art / Borderless / Showcase, Battles (Siege), Adventures, Split Cards (with & without Fuse), Station Cards (1–3 Badges), Sagas, Classes, Cases, & Rooms.
+        </div>
       </div>
 
       <!-- File Dropzone -->
@@ -63,7 +69,7 @@
         <textarea
           id="deckInput"
           class="deck-textarea"
-          placeholder="1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie&#10;1 All-Seeing Toby (SLD) 2695 # An anime boy in a library holding a book&#10;1 Animate Dead (SLD) 2189 # An old man in an anime style holding his hand up with a magic sphere surroundning him"
+          placeholder="# chibi anime character, bright colors, simple graphics, no gradients&#10;1 Byode, Inverse Sun (PH21) 3 # An girl dressed like a pixie&#10;1 All-Seeing Toby (SLD) 2695 # An boy in a library holding a book&#10;1 Animate Dead (SLD) 2189 # An old man holding his hand up with a magic sphere surrounding him"
         ></textarea>
       </div>
 
@@ -247,6 +253,21 @@
             OpenAI API Key (Optional):
           </label>
           <input type="password" id="openaiApiKey" placeholder="Enter OPENAI_API_KEY..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+          <div>
+            <label for="transparentTextBoxes" style="display: block; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+              Transparent Text Boxes
+            </label>
+            <span style="font-size: 0.75rem; color: var(--text-secondary);">
+              Reduce opacity of all card elements by 10% so generative art shows through
+            </span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="transparentTextBoxes" />
+            <span class="toggle-slider"></span>
+          </label>
         </div>
 
       </div>
