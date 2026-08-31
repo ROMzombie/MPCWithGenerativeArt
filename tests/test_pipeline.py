@@ -17,6 +17,8 @@ from backend.compositor import (
     scale_card_frame_and_boxes,
     composite_full_art_card,
     composite_card,
+    create_proxy_card,
+    apply_card_rename,
     save_card_outputs,
     MPC_800DPI_WIDTH,
     MPC_800DPI_HEIGHT,
@@ -511,6 +513,58 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         expected_r = int(pixel_opaque[0] * 0.80 + 255 * 0.20)
         self.assertAlmostEqual(pixel_transparent[0], expected_r, delta=3)
         self.assertNotEqual(pixel_opaque, pixel_transparent)
+
+    async def test_custom_card_rename_with_slx_chevron(self):
+        # 1. Fetch card frame
+        card_data = await scryfall_client.get_card("ph21", "3", "Byode, Inverse Sun")
+        card_img = Image.open(card_data.cached_png_path).convert("RGB")
+        cw, ch = card_img.size
+
+        # 2. Detect boxes with new_name
+        boxes = detect_card_boxes(
+            card_img=card_img,
+            type_line=card_data.type_line,
+            flavor_name=card_data.flavor_name,
+            border_color=card_data.border_color,
+            frame_effects=card_data.frame_effects,
+            layout=card_data.layout,
+            full_art=card_data.full_art,
+            new_name="Sol Invictus",
+        )
+        self.assertIsNotNone(boxes["subtitle_polygon"])
+        self.assertEqual(len(boxes["subtitle_polygon"]), 4)
+        # Title box must include chevron banner (height > 90)
+        self.assertGreater(boxes["title_box"][3] - boxes["title_box"][1], 80)
+
+        # 3. Apply card rename
+        renamed_img = apply_card_rename(
+            card_img=card_img,
+            original_name="Byode, Inverse Sun",
+            new_name="Sol Invictus",
+            mana_cost=card_data.mana_cost,
+        )
+        self.assertEqual(renamed_img.size, (cw, ch))
+
+        # Check that chevron area has been drawn (x=372, y=124)
+        chevron_p = renamed_img.getpixel((372, 124))
+        # Chevron has dark fill or text pixel
+        self.assertTrue(sum(chevron_p[:3]) / 3.0 < 240)
+
+        # 4. Composite generative art card with custom name
+        gen = MockProceduralGenerator()
+        art = await gen.generate_art("golden sunburst", "Byode, Inverse Sun", cw, ch, flavor_name="Sol Invictus")
+        comp = composite_card(card_frame_img=renamed_img, generated_art_img=art, card_boxes=boxes)
+        self.assertEqual(comp.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
+
+        # 5. Create proxy card with custom name
+        proxy = create_proxy_card(
+            card_frame_img=card_img,
+            card_boxes=boxes,
+            new_name="Sol Invictus",
+            original_name="Byode, Inverse Sun",
+            mana_cost=card_data.mana_cost,
+        )
+        self.assertEqual(proxy.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
 
 
 if __name__ == "__main__":

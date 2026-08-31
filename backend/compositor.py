@@ -1,6 +1,7 @@
 """Card image compositor, card box detector, exclusion masking, and 800 DPI MPC exporter."""
 
 import os
+import re
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any, Union, List
 from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageChops, ImageFont, ImageEnhance
@@ -196,6 +197,7 @@ def detect_card_boxes(
     keywords: Optional[List[str]] = None,
     oracle_text: Optional[str] = None,
     card_name: Optional[str] = None,
+    new_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Detects individual borders of the card rules and statistic text boxes,
@@ -239,7 +241,7 @@ def detect_card_boxes(
         or bool(full_art)
         or (l_lower == "art_series")
     )
-    has_flavor_name = bool(flavor_name)
+    has_flavor_name = bool(flavor_name or new_name)
 
     # 2. Specialized Frame Geometry Detection
     extra_boxes: List[Dict[str, Any]] = []
@@ -443,7 +445,10 @@ def detect_card_boxes(
         if is_planeswalker:
             # Planeswalker title pill is slightly narrower
             title_pill = (int(46 * sx), int(44 * sy), int(698 * sx), int(98 * sy))
-            title_box = title_pill
+            if has_flavor_name:
+                title_box = (int(46 * sx), int(44 * sy), int(698 * sx), int(144 * sy))
+            else:
+                title_box = title_pill
             rules_box = (int(54 * sx), int(650 * sy), int(690 * sx), int(960 * sy))
             stat_polygon = [
                 (int(604 * sx), int(928 * sy)),
@@ -931,28 +936,41 @@ def composite_card(
     )
 
 
-def get_bold_arial_font(size: int) -> ImageFont.ImageFont:
+def get_card_font(size: int, bold: bool = True, italic: bool = False) -> ImageFont.ImageFont:
     """
-    Attempts to load bold Arial font from local system font locations,
-    falling back to standard Arial or default bitmap/TrueType font.
+    Attempts to load a suitable typography font matching MTG styling:
+    checks bold, italic, bold-italic, and regular system font variants.
     """
-    font_candidates = [
-        "arialbd.ttf",
-        "Arial-Bold.ttf",
-        "Arial_Bold.ttf",
-        "Arial Bold.ttf",
-        "arial.ttf",
-        "Arial.ttf",
-        "C:/Windows/Fonts/arialbd.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-        "/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf",
-        "/usr/share/fonts/truetype/msttcorefonts/arial.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/Library/Fonts/Arial Bold.ttf",
-        "/Library/Fonts/Arial.ttf",
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-    ]
+    if bold and italic:
+        font_candidates = [
+            "arialbi.ttf", "calibriz.ttf", "georgiaz.ttf", "cambriaz.ttf", "timesbi.ttf", "segoeuiz.ttf",
+            "C:/Windows/Fonts/arialbi.ttf", "C:/Windows/Fonts/calibriz.ttf", "C:/Windows/Fonts/georgiaz.ttf",
+            "/Library/Fonts/Arial Bold Italic.ttf", "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf",
+        ]
+    elif bold:
+        font_candidates = [
+            "beleren.ttf", "Beleren-Bold.ttf", "arialbd.ttf", "Arial-Bold.ttf", "Arial_Bold.ttf", "Arial Bold.ttf",
+            "calibrib.ttf", "georgiab.ttf", "cambriab.ttf", "timesbd.ttf", "segoeuib.ttf",
+            "C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/calibrib.ttf", "C:/Windows/Fonts/georgiab.ttf",
+            "/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/Library/Fonts/Arial Bold.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        ]
+    elif italic:
+        font_candidates = [
+            "beleren-italic.ttf", "ariali.ttf", "Arial-Italic.ttf", "Arial_Italic.ttf", "Arial Italic.ttf",
+            "calibrii.ttf", "georgiai.ttf", "cambriai.ttf", "timesi.ttf", "segoeuii.ttf",
+            "C:/Windows/Fonts/ariali.ttf", "C:/Windows/Fonts/calibrii.ttf", "C:/Windows/Fonts/georgiai.ttf",
+            "/usr/share/fonts/truetype/msttcorefonts/ariali.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+            "/Library/Fonts/Arial Italic.ttf", "/System/Library/Fonts/Supplemental/Arial Italic.ttf",
+        ]
+    else:
+        font_candidates = [
+            "beleren.ttf", "arial.ttf", "Arial.ttf", "calibri.ttf", "georgia.ttf", "cambria.ttf", "times.ttf", "segoeui.ttf",
+            "C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/calibri.ttf", "C:/Windows/Fonts/georgia.ttf",
+            "/usr/share/fonts/truetype/msttcorefonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/Library/Fonts/Arial.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ]
+
     for font_path in font_candidates:
         try:
             return ImageFont.truetype(font_path, size=size)
@@ -962,6 +980,179 @@ def get_bold_arial_font(size: int) -> ImageFont.ImageFont:
         return ImageFont.load_default(size=size)
     except Exception:
         return ImageFont.load_default()
+
+
+def get_bold_arial_font(size: int) -> ImageFont.ImageFont:
+    """
+    Attempts to load bold Arial font from local system font locations,
+    falling back to standard Arial or default bitmap/TrueType font.
+    """
+    return get_card_font(size=size, bold=True, italic=False)
+
+
+def apply_card_rename(
+    card_img: Image.Image,
+    original_name: str,
+    new_name: str,
+    mana_cost: Optional[str] = None,
+    sx: Optional[float] = None,
+    sy: Optional[float] = None,
+) -> Image.Image:
+    """
+    Erases the existing card name on the normal nameplate using the underlying texture filled in,
+    replaces it with the new custom name prefaced with ' @ ', and renders the existing card name
+    in the SLX chevron under the normal nameplate.
+    """
+    cw, ch = card_img.size
+    if sx is None:
+        sx = cw / 745.0
+    if sy is None:
+        sy = ch / 1040.0
+
+    pips = re.findall(r"\{[^}]+\}", mana_cost or "")
+    num_pips = len(pips)
+
+    text_x1 = int(58 * sx)
+    if num_pips > 0:
+        mana_left = int((678 - num_pips * 36 - 15) * sx)
+        text_x2 = min(int(675 * sx), mana_left)
+    else:
+        text_x2 = int(675 * sx)
+
+    y_top = int(55 * sy)
+    y_bot = int(105 * sy)
+
+    card_copy = card_img.copy().convert("RGBA")
+
+    # 1. Erase and infill texture in title plate with feathered edge blending
+    infill_img = card_img.copy().convert("RGBA")
+    pad_x = int(8 * sx)
+    pad_y = int(5 * sy)
+
+    fill_x1 = max(int(46 * sx), text_x1 - pad_x)
+    fill_x2 = min(int(692 * sx), text_x2 + pad_x)
+
+    for x in range(fill_x1, fill_x2):
+        top_samples = [card_img.getpixel((x, y)) for y in range(max(0, int(52 * sy)), min(ch, int(58 * sy)))]
+        bot_samples = [card_img.getpixel((x, y)) for y in range(max(0, int(102 * sy)), min(ch, int(108 * sy)))]
+
+        top_avg = [sum(s[i] for s in top_samples) / len(top_samples) for i in range(3)]
+        bot_avg = [sum(s[i] for s in bot_samples) / len(bot_samples) for i in range(3)]
+
+        for y in range(max(0, y_top - pad_y), min(ch, y_bot + pad_y + 1)):
+            t = (y - (y_top - pad_y)) / max(1, ((y_bot + pad_y) - (y_top - pad_y)))
+            r = int(top_avg[0] * (1 - t) + bot_avg[0] * t)
+            g = int(top_avg[1] * (1 - t) + bot_avg[1] * t)
+            b = int(top_avg[2] * (1 - t) + bot_avg[2] * t)
+            infill_img.putpixel((x, y), (r, g, b, 255))
+
+    # Soft horizontal diffusion across infilled patch to blend organic parchment texture
+    infill_crop = infill_img.crop((fill_x1, max(0, y_top - pad_y), fill_x2, min(ch, y_bot + pad_y)))
+    infill_blurred = infill_crop.filter(ImageFilter.GaussianBlur(radius=max(0.8, 1.2 * sx)))
+    infill_img.paste(infill_blurred, (fill_x1, max(0, y_top - pad_y)))
+
+    # Create feathered alpha mask for seamless edge transition
+    mask = Image.new("L", (cw, ch), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    draw_mask.rounded_rectangle([text_x1, y_top, text_x2, y_bot], radius=max(2, int(4 * sy)), fill=255)
+    feather_r = max(2.5, 3.5 * sy)
+    feathered_mask = mask.filter(ImageFilter.GaussianBlur(radius=feather_r))
+
+    # Blend infilled texture onto base card frame
+    card_copy = card_img.copy().convert("RGBA")
+    card_copy.paste(infill_img, (0, 0), feathered_mask)
+
+    # Sample background brightness in title area to decide dark vs light text
+    sample_pixels = [card_copy.getpixel((x, int(80 * sy))) for x in range(text_x1, min(text_x2, text_x1 + 100), 10)]
+    avg_bright = (sum(sum(p[:3]) / 3.0 for p in sample_pixels) / len(sample_pixels)) if sample_pixels else 150.0
+    title_color = (18, 20, 24, 255) if avg_bright > 110 else (245, 245, 248, 255)
+    shadow_color = (255, 255, 255, 140) if avg_bright > 110 else (0, 0, 0, 180)
+
+    # 2. Render new card name in the title plate
+    avail_w = text_x2 - text_x1 - int(10 * sx)
+    font_size = max(16, int(32 * sy))
+    title_font = get_card_font(font_size, bold=True)
+
+    draw = ImageDraw.Draw(card_copy)
+    try:
+        bbox = draw.textbbox((0, 0), new_name, font=title_font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+    except Exception:
+        tw = int(font_size * 0.6 * len(new_name))
+        th = font_size
+        bbox = (0, 0, tw, th)
+
+    while tw > avail_w and font_size > int(16 * sy):
+        font_size -= 1
+        title_font = get_card_font(font_size, bold=True)
+        try:
+            bbox = draw.textbbox((0, 0), new_name, font=title_font)
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+        except Exception:
+            tw = int(font_size * 0.6 * len(new_name))
+            th = font_size
+            bbox = (0, 0, tw, th)
+
+    title_x = text_x1 + int(6 * sx)
+    title_y = int(80 * sy) - th // 2 - bbox[1]
+
+    # Draw shadow then title text
+    draw.text((title_x + 1, title_y + 1), new_name, fill=shadow_color, font=title_font)
+    draw.text((title_x, title_y), new_name, fill=title_color, font=title_font)
+
+    # 3. Draw SLX chevron under the normal nameplate
+    chevron_poly = [
+        (int(85 * sx), int(104 * sy)),
+        (int(660 * sx), int(104 * sy)),
+        (int(636 * sx), int(144 * sy)),
+        (int(109 * sx), int(144 * sy)),
+    ]
+
+    # Draw chevron background & border
+    draw.polygon(chevron_poly, fill=(20, 22, 26, 250))
+    draw.line([
+        (int(85 * sx), int(104 * sy)),
+        (int(109 * sx), int(144 * sy)),
+        (int(636 * sx), int(144 * sy)),
+        (int(660 * sx), int(104 * sy)),
+    ], fill=(80, 85, 95, 255), width=max(1, int(2 * sx)))
+
+    # Render existing card name inside chevron
+    ch_avail_w = int((636 - 109 - 20) * sx)
+    ch_font_size = max(12, int(20 * sy))
+    ch_font = get_card_font(ch_font_size, italic=True)
+    try:
+        ch_bbox = draw.textbbox((0, 0), original_name, font=ch_font)
+        ch_tw = ch_bbox[2] - ch_bbox[0]
+        ch_th = ch_bbox[3] - ch_bbox[1]
+    except Exception:
+        ch_tw = int(ch_font_size * 0.55 * len(original_name))
+        ch_th = ch_font_size
+        ch_bbox = (0, 0, ch_tw, ch_th)
+
+    while ch_tw > ch_avail_w and ch_font_size > int(12 * sy):
+        ch_font_size -= 1
+        ch_font = get_card_font(ch_font_size, italic=True)
+        try:
+            ch_bbox = draw.textbbox((0, 0), original_name, font=ch_font)
+            ch_tw = ch_bbox[2] - ch_bbox[0]
+            ch_th = ch_bbox[3] - ch_bbox[1]
+        except Exception:
+            ch_tw = int(ch_font_size * 0.55 * len(original_name))
+            ch_th = ch_font_size
+            ch_bbox = (0, 0, ch_tw, ch_th)
+
+    ch_cx = int(372 * sx)
+    ch_cy = int(124 * sy)
+    ch_x = ch_cx - ch_tw // 2 - ch_bbox[0]
+    ch_y = ch_cy - ch_th // 2 - ch_bbox[1]
+
+    draw.text((ch_x + 1, ch_y + 1), original_name, fill=(0, 0, 0, 200), font=ch_font)
+    draw.text((ch_x, ch_y), original_name, fill=(235, 235, 240, 255), font=ch_font)
+
+    return card_copy
 
 
 def sample_border_background_color(card_img: Image.Image, sx: float, sy: float) -> Tuple[int, int, int]:
@@ -1126,22 +1317,26 @@ def create_proxy_card(
     target_dpi: int = 800,
     target_width: int = MPC_800DPI_WIDTH,
     target_height: int = MPC_800DPI_HEIGHT,
+    new_name: Optional[str] = None,
+    original_name: Optional[str] = None,
+    mana_cost: Optional[str] = None,
 ) -> Image.Image:
     """
     Transforms a high-resolution Scryfall card scan into a print-ready MakePlayingCards proxy:
-    1. Removes the copyright, set code, artist, and collector number bar at the bottom,
+    1. Erases and replaces card name if new_name is specified, adding the existing name in the SLX chevron.
+    2. Removes the copyright, set code, artist, and collector number bar at the bottom,
        matching the underlying card frame background color.
-    2. Cleans white corner registration marks and scanner cut artifacts with the background color.
-    3. Removes the holofoil security stamp using proper masking geometry (oval, inverted triangle, acorn).
-    4. Adds 'PROXY' in bold dark grey Arial font centered in the bottom bar space.
-    5. Upscales the image to 800 DPI MakePlayingCards canvas dimensions (2184x2968)
+    3. Cleans white corner registration marks and scanner cut artifacts with the background color.
+    4. Removes the holofoil security stamp using proper masking geometry (oval, inverted triangle, acorn).
+    5. Adds 'PROXY' in bold dark grey Arial font centered in the bottom bar space.
+    6. Upscales the image to 800 DPI MakePlayingCards canvas dimensions (2184x2968)
        with 1/8" (100px) bleed margins and AI edge-preserving sharpness filters.
     """
     cw, ch = card_frame_img.size
     sx = cw / 745.0
     sy = ch / 1040.0
 
-    boxes = card_boxes if card_boxes is not None else detect_card_boxes(card_frame_img)
+    boxes = card_boxes if card_boxes is not None else detect_card_boxes(card_frame_img, new_name=new_name)
 
     # Sample underlying background/border color
     bg_color = sample_border_background_color(card_frame_img, sx, sy)
@@ -1149,6 +1344,18 @@ def create_proxy_card(
 
     # Clean corner scanner marks, cut registration lines, and corner artifacts
     card_work = clean_card_corner_artifacts(card_frame_img, bg_color, sx, sy)
+
+    # If custom name specified, erase original title and render new name + SLX chevron
+    if new_name:
+        card_work = apply_card_rename(
+            card_img=card_work,
+            original_name=original_name or "",
+            new_name=new_name,
+            mana_cost=mana_cost,
+            sx=sx,
+            sy=sy,
+        )
+
     draw = ImageDraw.Draw(card_work)
 
     # 1. Remove Holofoil Stamp if present with proper geometry

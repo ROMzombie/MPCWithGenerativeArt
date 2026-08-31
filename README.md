@@ -28,8 +28,14 @@ MPCWithGenerativeArt creates full-art card decks for [MakePlayingCards](https://
 1. Clone this repository or copy [`docker-compose.yml`](docker-compose.yml) and [`.env.example`](.env.example).
 2. Create and configure your `.env` file:
 
+**Bash:**
 ```bash
 cp .env.example .env
+```
+
+**PowerShell:**
+```powershell
+Copy-Item .env.example .env
 ```
 
 Edit `.env` to set your desired `GENERATOR_PROVIDER` and API keys:
@@ -41,7 +47,13 @@ XAI_API_KEY=your_xai_api_key_here
 
 3. Start the container:
 
+**Bash:**
 ```bash
+docker compose up -d
+```
+
+**PowerShell:**
+```powershell
 docker compose up -d
 ```
 
@@ -53,12 +65,19 @@ Docker Compose automatically loads values from the `.env` file into the containe
 
 1. Create your `.env` configuration file:
 
+**Bash:**
 ```bash
 cp .env.example .env
 ```
 
+**PowerShell:**
+```powershell
+Copy-Item .env.example .env
+```
+
 2. Run the container with the `--env-file` flag:
 
+**Bash:**
 ```bash
 docker run -d \
   --name mpc-generative-art \
@@ -69,8 +88,20 @@ docker run -d \
   ghcr.io/romzombie/mpcwithgenerativeart:latest
 ```
 
+**PowerShell:**
+```powershell
+docker run -d `
+  --name mpc-generative-art `
+  -p 8000:8000 `
+  -v mpc_output:/app/output `
+  -v mpc_cache:/app/cache `
+  --env-file .env `
+  ghcr.io/romzombie/mpcwithgenerativeart:latest
+```
+
 Alternatively, pass individual environment flags:
 
+**Bash:**
 ```bash
 docker run -d \
   --name mpc-generative-art \
@@ -79,6 +110,18 @@ docker run -d \
   -v mpc_cache:/app/cache \
   -e GENERATOR_PROVIDER=grok \
   -e XAI_API_KEY=your_xai_key_here \
+  ghcr.io/romzombie/mpcwithgenerativeart:latest
+```
+
+**PowerShell:**
+```powershell
+docker run -d `
+  --name mpc-generative-art `
+  -p 8000:8000 `
+  -v mpc_output:/app/output `
+  -v mpc_cache:/app/cache `
+  -e GENERATOR_PROVIDER=grok `
+  -e XAI_API_KEY=your_xai_key_here `
   ghcr.io/romzombie/mpcwithgenerativeart:latest
 ```
 
@@ -97,33 +140,64 @@ docker run -d \
 
 1. Clone the repository:
 
+**Bash:**
 ```bash
+git clone https://github.com/ROMzombie/MPCWithGenerativeArt.git
+cd MPCWithGenerativeArt
+```
+
+**PowerShell:**
+```powershell
 git clone https://github.com/ROMzombie/MPCWithGenerativeArt.git
 cd MPCWithGenerativeArt
 ```
 
 2. Install Python dependencies:
 
+**Bash:**
 ```bash
+pip install -r requirements.txt
+```
+
+**PowerShell:**
+```powershell
 pip install -r requirements.txt
 ```
 
 3. Install Playwright Chromium:
 
+**Bash:**
 ```bash
-playwright install chromium
+python -m playwright install chromium
+```
+
+**PowerShell:**
+```powershell
+python -m playwright install chromium
 ```
 
 4. Create your `.env` configuration file:
 
+**Bash:**
 ```bash
 cp .env.example .env
 ```
 
+**PowerShell:**
+```powershell
+Copy-Item .env.example .env
+```
+
 5. Start the application:
 
+**Bash:**
 ```bash
-uvicorn backend.app:app --reload --port 8000
+python -m uvicorn backend.app:app --reload --port 8000
+```
+
+**PowerShell:**
+```powershell
+python -m uvicorn backend.app:app --reload --port 8000
 ```
 
 6. Open `http://localhost:8000` in your web browser.
@@ -253,6 +327,12 @@ When card generation completes, export your order using three options:
 
 Run the test suite with the Python `unittest` runner:
 
+**Bash:**
 ```bash
+python -m unittest tests/test_proxies.py tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py
+```
+
+**PowerShell:**
+```powershell
 python -m unittest tests/test_proxies.py tests/test_grok.py tests/test_janus.py tests/test_api.py tests/test_pipeline.py
 ```

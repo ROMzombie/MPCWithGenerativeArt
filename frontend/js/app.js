@@ -319,24 +319,29 @@ function renderCardGrid() {
   // Attach event listeners for prompt regeneration and preview
   currentCards.forEach((card) => {
     const cardEl = document.getElementById(`card-elem-${card.id}`);
-    if (!cardEl) return;
-
-    const btnRegen = cardEl.querySelector(".btn-regen");
-    const promptInput = cardEl.querySelector(".prompt-textarea");
-    const previewContainer = cardEl.querySelector(".card-preview-container");
-
-    if (btnRegen && promptInput) {
-      btnRegen.addEventListener("click", () => {
-        regenerateSingleCard(card.id, promptInput.value);
-      });
-    }
-
-    if (previewContainer) {
-      previewContainer.addEventListener("click", () => {
-        openLightbox(card);
-      });
+    if (cardEl) {
+      attachCardListeners(cardEl, card);
     }
   });
+}
+
+function attachCardListeners(cardEl, card) {
+  if (!cardEl || !card) return;
+  const btnRegen = cardEl.querySelector(".btn-regen");
+  const promptInput = cardEl.querySelector(".prompt-textarea");
+  const previewContainer = cardEl.querySelector(".card-preview-container");
+
+  if (btnRegen && promptInput) {
+    btnRegen.addEventListener("click", () => {
+      regenerateSingleCard(card.id, promptInput.value);
+    });
+  }
+
+  if (previewContainer) {
+    previewContainer.addEventListener("click", () => {
+      openLightbox(card);
+    });
+  }
 }
 
 function createCardElementHTML(card) {
@@ -360,7 +365,9 @@ function createCardElementHTML(card) {
 
       <div class="card-body">
         <div class="card-meta">
-          <div class="card-title">${escapeHtml(card.card_name)}</div>
+          <div class="card-title">
+            ${card.new_name ? `${escapeHtml(card.new_name)} <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">(${escapeHtml(card.card_name)})</span>` : escapeHtml(card.card_name)}
+          </div>
           <span class="card-status-badge status-${card.status}">${escapeHtml(card.status)}</span>
         </div>
 
@@ -386,6 +393,13 @@ function createCardElementHTML(card) {
 }
 
 function updateCardInUI(updatedCard) {
+  if (!updatedCard) return;
+  // Unwrap nested card object if API response structure was passed directly
+  if (updatedCard.card && updatedCard.card.id) {
+    updatedCard = updatedCard.card;
+  }
+  if (!updatedCard.id) return;
+
   const index = currentCards.findIndex((c) => c.id === updatedCard.id);
   if (index !== -1) {
     currentCards[index] = updatedCard;
@@ -400,39 +414,49 @@ function updateCardInUI(updatedCard) {
     temp.innerHTML = createCardElementHTML(updatedCard);
     const newEl = temp.firstElementChild;
     parent.replaceChild(newEl, existingEl);
-
-    // Reattach listeners
-    const btnRegen = newEl.querySelector(".btn-regen");
-    const promptInput = newEl.querySelector(".prompt-textarea");
-    const previewContainer = newEl.querySelector(".card-preview-container");
-
-    if (btnRegen && promptInput) {
-      btnRegen.addEventListener("click", () => regenerateSingleCard(updatedCard.id, promptInput.value));
-    }
-    if (previewContainer) {
-      previewContainer.addEventListener("click", () => openLightbox(updatedCard));
-    }
+    attachCardListeners(newEl, updatedCard);
   } else {
-    renderCardGrid();
+    const grid = document.getElementById("cardsGrid");
+    if (grid) {
+      const temp = document.createElement("div");
+      temp.innerHTML = createCardElementHTML(updatedCard);
+      const newEl = temp.firstElementChild;
+      grid.appendChild(newEl);
+      attachCardListeners(newEl, updatedCard);
+    }
   }
 }
 
 async function regenerateSingleCard(cardId, prompt) {
-  const cardEl = document.getElementById(`card-elem-${cardId}`);
-  const btnRegen = cardEl.querySelector(".btn-regen");
-  btnRegen.disabled = true;
-  btnRegen.innerHTML = `<span class="spinner"></span> Regenerating...`;
+  const card = currentCards.find((c) => c.id === cardId);
+  if (!card) return;
 
   try {
+    card.prompt = prompt;
+    card.status = "generating";
+    card.status_message = "Regenerating...";
+    updateCardInUI(card);
+
     const res = await fetch(`/api/cards/${cardId}/regenerate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Regeneration failed");
+    }
+
     const data = await res.json();
-    console.log("Regeneration triggered:", data);
+    const updated = data.card || data;
+    if (updated && updated.id) {
+      updateCardInUI(updated);
+    }
   } catch (err) {
-    alert("Error regenerating card: " + err.message);
+    card.status = "error";
+    card.status_message = err.message;
+    updateCardInUI(card);
   }
 }
 
@@ -443,7 +467,8 @@ function openLightbox(card) {
   const caption = document.getElementById("lightboxCaption");
 
   img.src = `/api/cards/${card.id}/image?t=${Date.now()}`;
-  caption.textContent = `${card.card_name} (${card.set_code} #${card.collector_number}) — 800 DPI MakePlayingCards Format`;
+  const displayName = card.new_name ? `${card.new_name} (${card.card_name})` : card.card_name;
+  caption.textContent = `${displayName} (${card.set_code} #${card.collector_number}) — 800 DPI MakePlayingCards Format`;
   modal.classList.add("active");
 }
 

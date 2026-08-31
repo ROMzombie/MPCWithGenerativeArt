@@ -1,13 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MPC With Generative Art — Custom Playing Cards</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
   <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
-  <link rel="stylesheet" href="/static/css/style.css?v=4" />
+  <link rel="stylesheet" href="/static/css/style.css?v=5" />
 </head>
+
 <body>
 
   <!-- Top Navigation -->
@@ -45,16 +47,22 @@
       </div>
 
       <p class="section-subtitle">
-        Enter lines matching the format below, or drag-and-drop a text file. Click <strong>Generate Art</strong> to replace artwork with generative art, or <strong>Just Proxies</strong> to clean and upscale original Scryfall card frames to <strong>800 DPI print quality</strong> for MakePlayingCards.
+        Enter lines matching the format below, or drag-and-drop a text file. Click <strong>Generate Art</strong> to
+        replace artwork with generative art, or <strong>Just Proxies</strong> to clean and upscale original Scryfall
+        card frames to <strong>800 DPI print quality</strong> for MakePlayingCards.
       </p>
 
       <div class="code-format-tip">
         <div style="font-weight: 600; margin-bottom: 0.35rem;">Supported Deck Formats:</div>
-        <div>• <code>[Copies] [CardName] ([SetCode]) [CollectorNumber] # [Prompt]</code> <span style="color: var(--text-secondary);">(Generative Art)</span></div>
-        <div>• <code># [global style prompt]</code> <span style="color: var(--text-secondary);">(Top-level style prepended to all card prompts)</span></div>
-        <div>• <code>[Copies] [CardName] ([SetCode]) [CollectorNumber]</code> <span style="color: var(--text-secondary);">(Just Proxies or Moxfield / Archidekt exports)</span></div>
+        <div>• <code>[Copies] [CardName] ([SetCode]) [CollectorNumber] [@ NewName] # [Prompt]</code> <span
+            style="color: var(--text-secondary);">(Generative Art with optional Custom Name)</span></div>
+        <div>• <code>[Copies] [CardName] ([SetCode]) [CollectorNumber] [@ NewName]</code> <span
+            style="color: var(--text-secondary);">(Just Proxies with optional Custom Name)</span></div>
+        <div>• <code># [global style prompt]</code> <span style="color: var(--text-secondary);">(Top-level style
+            prepended to all card prompts)</span></div>
         <div style="margin-top: 0.4rem; font-size: 0.8rem; color: var(--text-secondary);">
-          <strong>Supported Layout Types:</strong> Standard Frames, Full-Art / Borderless / Showcase, Battles (Siege), Adventures, Split Cards (with & without Fuse), Station Cards (1–3 Badges), Sagas, Classes, Cases, & Rooms.
+          <strong>Supported Layout Types:</strong> Standard Frames, Full-Art / Borderless / Showcase, Battles (Siege),
+          Adventures, Split Cards (with & without Fuse), Station Cards (1–3 Badges), Sagas, Classes, Cases, & Rooms.
         </div>
       </div>
 
@@ -66,11 +74,8 @@
 
       <!-- Textarea with Tab Support -->
       <div class="editor-wrapper">
-        <textarea
-          id="deckInput"
-          class="deck-textarea"
-          placeholder="# chibi anime character, bright colors, simple graphics, no gradients&#10;1 Byode, Inverse Sun (PH21) 3 # An girl dressed like a pixie&#10;1 All-Seeing Toby (SLD) 2695 # An boy in a library holding a book&#10;1 Animate Dead (SLD) 2189 # An old man holding his hand up with a magic sphere surrounding him"
-        ></textarea>
+        <textarea id="deckInput" class="deck-textarea"
+          placeholder="# chibi anime character, bright colors, simple graphics, no gradients&#10;1 Byode, Inverse Sun (PH21) 3 @ Sol Invictus # An anime girl dressed like a pixie&#10;1 All-Seeing Toby (SLD) 2695 # An boy in a library holding a book&#10;1 Animate Dead (SLD) 2189 # An old man holding his hand up with a magic sphere surrounding him"></textarea>
       </div>
 
       <!-- Live Validation Status & Errors -->
@@ -93,7 +98,8 @@
 
     <!-- Card Grid Section -->
     <section class="card-section" id="gridSection" style="display: none;">
-      <div class="grid-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+      <div class="grid-header"
+        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
         <div>
           <h2 class="section-title" id="gridTitle" style="display: inline-block; margin-right: 0.75rem;">
             🎨 Generated Cards (800 DPI Print Ready)
@@ -120,7 +126,8 @@
         <button class="close-btn close-modal">&times;</button>
       </div>
 
-      <div style="background-color: var(--bg-card); padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1.25rem;">
+      <div
+        style="background-color: var(--bg-card); padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1.25rem;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
           <span style="color: var(--text-secondary);">Total Cards to Print:</span>
           <strong id="modalTotalCards">0 Cards</strong>
@@ -142,7 +149,8 @@
           <span>1-Click Direct In-Browser Injector (Recommended)</span>
         </div>
         <p class="injector-subtitle">
-          Uploads all generated 800 DPI cards and <strong>automatically adds them to the next open spaces in your MakePlayingCards order</strong>:
+          Uploads all generated 800 DPI cards and <strong>automatically adds them to the next open spaces in your
+            MakePlayingCards order</strong>:
         </p>
 
         <div class="injector-steps">
@@ -151,7 +159,9 @@
             <div style="display: flex; flex-direction: column; gap: 0.4rem;">
               <span>Start the editor on MakePlayingCards:</span>
               <div>
-                <a href="https://www.makeplayingcards.com/design/custom-blank-card.html" target="_blank" class="btn btn-primary btn-sm" id="btnOpenMpcDesigner" style="display: inline-flex; font-size: 0.85rem; padding: 0.4rem 0.9rem;">
+                <a href="https://www.makeplayingcards.com/design/custom-blank-card.html" target="_blank"
+                  class="btn btn-primary btn-sm" id="btnOpenMpcDesigner"
+                  style="display: inline-flex; font-size: 0.85rem; padding: 0.4rem 0.9rem;">
                   🔗 Open MakePlayingCards Card Designer (New Tab)
                 </a>
               </div>
@@ -164,14 +174,17 @@
         </div>
 
         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
-          <a id="mpcBookmarklet" href="#" class="bookmarklet-btn" title="Drag this button to your browser Bookmarks Bar">
+          <a id="mpcBookmarklet" href="#" class="bookmarklet-btn"
+            title="Drag this button to your browser Bookmarks Bar">
             🎴 Send Deck to MPC
           </a>
-          <span style="font-size: 0.8rem; color: var(--text-muted);">(Drag to Bookmarks Bar, then click on MPC tab)</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">(Drag to Bookmarks Bar, then click on MPC
+            tab)</span>
         </div>
 
         <div class="snippet-wrapper">
-          <code class="snippet-code" id="snippetCode">fetch('http://localhost:8000/api/mpc/injector.js').then(r=>r.text()).then(eval)</code>
+          <code class="snippet-code"
+            id="snippetCode">fetch('http://localhost:8000/api/mpc/injector.js').then(r=>r.text()).then(eval)</code>
           <button class="copy-btn" id="btnCopySnippet">📋 Copy Snippet</button>
         </div>
       </div>
@@ -182,11 +195,13 @@
         </h4>
 
         <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
-          <a href="/api/export/zip" download="MPC_GenerativeArt_Deck.zip" class="btn btn-secondary" style="justify-content: center;">
+          <a href="/api/export/zip" download="MPC_GenerativeArt_Deck.zip" class="btn btn-secondary"
+            style="justify-content: center;">
             📦 Download MPCFill Package (.zip + cards.xml)
           </a>
 
-          <a href="/api/export/xml" download="cards.xml" class="btn btn-secondary btn-sm" style="justify-content: center;">
+          <a href="/api/export/xml" download="cards.xml" class="btn btn-secondary btn-sm"
+            style="justify-content: center;">
             📄 Download cards.xml Only
           </a>
 
@@ -195,7 +210,8 @@
           </button>
         </div>
 
-        <div class="log-terminal" id="mpcLogTerminal" style="display: none;">Automation log output will appear here...</div>
+        <div class="log-terminal" id="mpcLogTerminal" style="display: none;">Automation log output will appear here...
+        </div>
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
@@ -217,7 +233,8 @@
           <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
             Generative Art Provider:
           </label>
-          <select id="providerSelect" style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);">
+          <select id="providerSelect"
+            style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);">
             <option value="grok">⚡ xAI Grok (grok-imagine-image-2.0)</option>
             <option value="janus" selected>🌌 DeepSeek Janus-Pro-7B (Hugging Face Space)</option>
             <option value="perchance">🔮 Perchance AI Art Generator (Free / Zero-Config)</option>
@@ -231,33 +248,39 @@
           <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
             xAI Grok API Key (Optional):
           </label>
-          <input type="password" id="xaiApiKey" placeholder="Enter XAI_API_KEY (e.g. xai-...)..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
+          <input type="password" id="xaiApiKey" placeholder="Enter XAI_API_KEY (e.g. xai-...)..."
+            style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
         </div>
 
         <div>
           <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
             Hugging Face Access Token (Optional, for ZeroGPU Priority):
           </label>
-          <input type="password" id="hfToken" placeholder="Enter HF_TOKEN (e.g. hf_...)..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
+          <input type="password" id="hfToken" placeholder="Enter HF_TOKEN (e.g. hf_...)..."
+            style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
         </div>
 
         <div>
           <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
             Google Gemini API Key (Optional):
           </label>
-          <input type="password" id="geminiApiKey" placeholder="Enter GEMINI_API_KEY..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
+          <input type="password" id="geminiApiKey" placeholder="Enter GEMINI_API_KEY..."
+            style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
         </div>
 
         <div>
           <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem;">
             OpenAI API Key (Optional):
           </label>
-          <input type="password" id="openaiApiKey" placeholder="Enter OPENAI_API_KEY..." style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
+          <input type="password" id="openaiApiKey" placeholder="Enter OPENAI_API_KEY..."
+            style="width: 100%; padding: 0.6rem; background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);" />
         </div>
 
-        <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+        <div
+          style="display: flex; align-items: center; justify-content: space-between; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
           <div>
-            <label for="transparentTextBoxes" style="display: block; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+            <label for="transparentTextBoxes"
+              style="display: block; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
               Transparent Text Boxes
             </label>
             <span style="font-size: 0.75rem; color: var(--text-secondary);">
@@ -282,12 +305,16 @@
   <!-- Lightbox Modal -->
   <div class="modal-backdrop" id="lightboxModal">
     <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem; position: relative;">
-      <button class="close-btn close-modal" style="position: absolute; top: -40px; right: 0; font-size: 2rem; color: #fff;">&times;</button>
+      <button class="close-btn close-modal"
+        style="position: absolute; top: -40px; right: 0; font-size: 2rem; color: #fff;">&times;</button>
       <img id="lightboxImage" class="lightbox-img" src="" alt="800 DPI Card Preview" />
-      <div id="lightboxCaption" style="font-size: 0.95rem; font-weight: 600; color: #e2e8f0; background: rgba(0,0,0,0.6); padding: 0.4rem 1rem; border-radius: 9999px;"></div>
+      <div id="lightboxCaption"
+        style="font-size: 0.95rem; font-weight: 600; color: #e2e8f0; background: rgba(0,0,0,0.6); padding: 0.4rem 1rem; border-radius: 9999px;">
+      </div>
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=4"></script>
+  <script src="/static/js/app.js?v=5"></script>
 </body>
+
 </html>

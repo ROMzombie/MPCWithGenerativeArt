@@ -24,6 +24,7 @@ class CardItem(BaseModel):
     stat_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for power/toughness or loyalty stats (x1, y1, x2, y2)")
     title_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for card name/mana header (x1, y1, x2, y2)")
     type_box: Optional[Tuple[int, int, int, int]] = Field(None, description="Detected bounding box for type line (x1, y1, x2, y2)")
+    new_name: Optional[str] = Field(None, description="Custom new name for the card (flavor name)")
     mode: Optional[str] = Field("art", description="Generation mode: art or proxy")
     created_at: Optional[str] = None
 
@@ -36,12 +37,7 @@ class ParseResult(BaseModel):
     global_prompt: Optional[str] = None
 
 
-# Regex pattern to match: Copies CardName (set) CollectorNumber # prompt
-LINE_PATTERN = re.compile(
-    r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-]+)(?:\s+[*\[(]?[A-Za-z0-9_*]+[\])]?)?\s+#\s*(?P<prompt>.*)$"
-)
-
-# Alternative regex if card info without prompt (or after split)
+# Regex pattern to match: Copies CardName (set) CollectorNumber [optional tags]
 CARD_SPLIT_PATTERN = re.compile(
     r"^\s*(?P<copies>\d+)\s+(?P<name>.+?)\s+\((?P<set>[A-Za-z0-9_\-]+)\)\s+(?P<number>[A-Za-z0-9_\-]+)(?:\s+[*\[(]?[A-Za-z0-9_*]+[\])]?)?\s*$"
 )
@@ -50,7 +46,7 @@ CARD_SPLIT_PATTERN = re.compile(
 def parse_deck_text(text: str, require_prompt: bool = True) -> ParseResult:
     """
     Parses deck lines formatted as:
-    Copies CardName (set) CollectorNumber # prompt
+    Copies CardName (set) CollectorNumber [@ NewName] [# prompt]
     or Copies CardName (set) CollectorNumber (if require_prompt is False or global_prompt is present)
 
     If the first line (or first non-empty line) starts with '#', the following
@@ -85,14 +81,30 @@ def parse_deck_text(text: str, require_prompt: bool = True) -> ParseResult:
             # Skip empty lines and comment lines (including the global prompt line)
             continue
 
-        # Try standard pattern first
-        match = LINE_PATTERN.match(line)
-        if match:
-            copies = int(match.group("copies"))
-            card_name = match.group("name").strip()
-            set_code = match.group("set").strip().upper()
-            collector_number = match.group("number").strip()
-            raw_prompt = match.group("prompt").strip()
+        # Extract prompt if ' # ' separator is present
+        if " # " in line:
+            parts = line.split(" # ", 1)
+            card_part = parts[0].strip()
+            raw_prompt = parts[1].strip()
+        else:
+            card_part = line
+            raw_prompt = ""
+
+        # Extract custom new name if ' @ ' separator is present
+        if " @ " in card_part:
+            spec_parts = card_part.split(" @ ", 1)
+            spec_part = spec_parts[0].strip()
+            new_name = spec_parts[1].strip() or None
+        else:
+            spec_part = card_part
+            new_name = None
+
+        card_match = CARD_SPLIT_PATTERN.match(spec_part)
+        if card_match:
+            copies = int(card_match.group("copies"))
+            card_name = card_match.group("name").strip()
+            set_code = card_match.group("set").strip().upper()
+            collector_number = card_match.group("number").strip()
 
             if copies <= 0:
                 errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
@@ -112,77 +124,15 @@ def parse_deck_text(text: str, require_prompt: bool = True) -> ParseResult:
                     set_code=set_code,
                     collector_number=collector_number,
                     prompt=raw_prompt,
+                    new_name=new_name,
                 )
             )
             total_copies += copies
             continue
 
-        # Check if line contains a ' # ' separator
-        if " # " in line:
-            parts = line.split(" # ", 1)
-            card_part = parts[0].strip()
-            prompt_part = parts[1].strip()
-
-            card_match = CARD_SPLIT_PATTERN.match(card_part)
-            if card_match:
-                copies = int(card_match.group("copies"))
-                card_name = card_match.group("name").strip()
-                set_code = card_match.group("set").strip().upper()
-                collector_number = card_match.group("number").strip()
-
-                if copies <= 0:
-                    errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
-                    continue
-                if require_prompt and not prompt_part and not global_prompt:
-                    errors.append(f"Line {idx}: Missing prompt for card '{card_name}'")
-                    continue
-
-                card_id = f"card_{idx}_{set_code}_{collector_number}".lower()
-                cards.append(
-                    CardItem(
-                        id=card_id,
-                        line_number=idx,
-                        copies=copies,
-                        card_name=card_name,
-                        set_code=set_code,
-                        collector_number=collector_number,
-                        prompt=prompt_part,
-                    )
-                )
-                total_copies += copies
-                continue
-
-        # If line has no # prompt, check if card part matches (when require_prompt is False or global_prompt exists)
-        if not require_prompt or global_prompt:
-            card_match = CARD_SPLIT_PATTERN.match(line)
-            if card_match:
-                copies = int(card_match.group("copies"))
-                card_name = card_match.group("name").strip()
-                set_code = card_match.group("set").strip().upper()
-                collector_number = card_match.group("number").strip()
-
-                if copies <= 0:
-                    errors.append(f"Line {idx}: Number of copies must be at least 1 (found {copies})")
-                    continue
-
-                card_id = f"card_{idx}_{set_code}_{collector_number}".lower()
-                cards.append(
-                    CardItem(
-                        id=card_id,
-                        line_number=idx,
-                        copies=copies,
-                        card_name=card_name,
-                        set_code=set_code,
-                        collector_number=collector_number,
-                        prompt="",
-                    )
-                )
-                total_copies += copies
-                continue
-
         # If we reached here, the line failed to match the required format
         errors.append(
-            f"Line {idx}: Invalid line format '{line}'. Expected format: 'Copies CardName (set) CollectorNumber # prompt' (e.g. '1 Byode, Inverse Sun (PH21) 3 # An anime girl dressed like a pixie')"
+            f"Line {idx}: Invalid line format '{line}'. Expected format: 'Copies CardName (set) CollectorNumber [@ NewName] # prompt' (e.g. '1 Byode, Inverse Sun (PH21) 3 @ Sol Invictus # An anime girl dressed like a pixie')"
         )
 
     if errors:

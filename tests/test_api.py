@@ -314,6 +314,52 @@ class TestFastAPIEndpoints(unittest.TestCase):
         self.assertEqual(revert_resp.status_code, 200)
         self.assertFalse(revert_resp.json()["transparent_text_boxes"])
 
+    def test_parse_deck_with_custom_names(self):
+        payload = {
+            "text": (
+                "1 Llanowar Elves (DOM) 168 @ Forest Guide # An elf druid guiding travelers\n"
+                "4 Lightning Bolt (CLB) 123 @ Electric Blast\n"
+                "2 Byode, Inverse Sun (PH21) 3 *F* @ Sol Invictus # Radiant golden sunburst\n"
+                "1 Counterspell (EMA) 43 # Blue vortex"
+            )
+        }
+        resp = client.post("/api/parse", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["valid"])
+        self.assertEqual(len(data["cards"]), 4)
+        self.assertEqual(data["total_copies"], 8)
+
+        # Card 1: with custom name and prompt
+        c1 = data["cards"][0]
+        self.assertEqual(c1["card_name"], "Llanowar Elves")
+        self.assertEqual(c1["set_code"], "DOM")
+        self.assertEqual(c1["collector_number"], "168")
+        self.assertEqual(c1["new_name"], "Forest Guide")
+        self.assertEqual(c1["prompt"], "An elf druid guiding travelers")
+
+        # Card 2: with custom name without prompt
+        c2 = data["cards"][1]
+        self.assertEqual(c2["card_name"], "Lightning Bolt")
+        self.assertEqual(c2["set_code"], "CLB")
+        self.assertEqual(c2["collector_number"], "123")
+        self.assertEqual(c2["new_name"], "Electric Blast")
+        self.assertEqual(c2["prompt"], "")
+
+        # Card 3: with foil tag, custom name, and prompt
+        c3 = data["cards"][2]
+        self.assertEqual(c3["card_name"], "Byode, Inverse Sun")
+        self.assertEqual(c3["set_code"], "PH21")
+        self.assertEqual(c3["collector_number"], "3")
+        self.assertEqual(c3["new_name"], "Sol Invictus")
+        self.assertEqual(c3["prompt"], "Radiant golden sunburst")
+
+        # Card 4: normal line without custom name
+        c4 = data["cards"][3]
+        self.assertEqual(c4["card_name"], "Counterspell")
+        self.assertEqual(c4["new_name"], None)
+        self.assertEqual(c4["prompt"], "Blue vortex")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -55,6 +55,7 @@ from backend.compositor import (
     composite_card,
     composite_full_art_card,
     create_proxy_card,
+    apply_card_rename,
     save_card_outputs,
     MPC_BLEED_SCALE,
     scale_card_frame_and_boxes,
@@ -224,12 +225,22 @@ async def process_single_card(card: CardItem):
             keywords=card_data.keywords,
             oracle_text=card_data.oracle_text,
             card_name=card.card_name,
+            new_name=card.new_name,
         )
         card.art_box = card_boxes.get("art_box")
         card.rules_box = card_boxes.get("rules_box")
         card.stat_box = card_boxes.get("stat_box")
         card.title_box = card_boxes.get("title_box")
         card.type_box = card_boxes.get("type_box")
+
+        # If custom card name specified, erase original title and render new name + SLX chevron
+        if card.new_name:
+            card_frame_img = apply_card_rename(
+                card_img=card_frame_img,
+                original_name=card.card_name,
+                new_name=card.new_name,
+                mana_cost=card_data.mana_cost,
+            )
 
         cw, ch = card_frame_img.size
         art_box = card_boxes.get("art_box") or (0, 0, cw, ch // 2)
@@ -297,7 +308,7 @@ async def process_single_card(card: CardItem):
             target_width=gen_w,
             target_height=gen_h,
             colors=card_data.colors,
-            flavor_name=card_data.flavor_name,
+            flavor_name=card.new_name or card_data.flavor_name,
             focal_center=focal_pt,
         )
 
@@ -374,6 +385,7 @@ async def process_single_proxy_card(card: CardItem):
             keywords=card_data.keywords,
             oracle_text=card_data.oracle_text,
             card_name=card.card_name,
+            new_name=card.new_name,
         )
 
         # 3. Clean copyright/set number bar, remove holofoil, add bold Arial 'PROXY', and upscale to 800 DPI
@@ -386,6 +398,9 @@ async def process_single_proxy_card(card: CardItem):
             card_frame_img=card_frame_img,
             card_boxes=card_boxes,
             target_dpi=800,
+            new_name=card.new_name,
+            original_name=card.card_name,
+            mana_cost=card_data.mana_cost,
         )
 
         # 4. Save outputs
