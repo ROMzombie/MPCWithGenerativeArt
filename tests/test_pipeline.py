@@ -566,6 +566,28 @@ class TestAsyncPipeline(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(proxy.size, (MPC_800DPI_WIDTH, MPC_800DPI_HEIGHT))
 
+        # 6. Verify font color matches replaced text box:
+        # - Light / gold frame (Byode): title font is dark/black
+        byode_title_crop = renamed_img.crop((int(58 * cw / 745.0), int(60 * ch / 1040.0), int(200 * cw / 745.0), int(95 * ch / 1040.0)))
+        byode_min_lum = min(sum(byode_title_crop.getpixel((x, y))[:3]) / 3.0 for x in range(byode_title_crop.width) for y in range(byode_title_crop.height))
+        self.assertLess(byode_min_lum, 60.0) # Dark text stroke present
+
+        # - Dark / black frame (Murder): title font is bright white
+        murder_data = await scryfall_client.get_card("mom", "115", "Murder")
+        murder_img = Image.open(murder_data.cached_png_path).convert("RGB")
+        murder_renamed = apply_card_rename(murder_img, "Murder", "Assassinate", mana_cost=murder_data.mana_cost)
+        murder_title_crop = murder_renamed.crop((int(58 * murder_img.width / 745.0), int(60 * murder_img.height / 1040.0), int(200 * murder_img.width / 745.0), int(95 * murder_img.height / 1040.0)))
+        murder_max_lum = max(sum(murder_title_crop.getpixel((x, y))[:3]) / 3.0 for x in range(murder_title_crop.width) for y in range(murder_title_crop.height))
+        self.assertGreater(murder_max_lum, 240.0) # Bright white text stroke present
+
+        # - Secret Lair / dark translucent glass banner (SLD 2816 Arcane Signet): title font is bright white
+        sld_data = await scryfall_client.get_card("sld", "2816", "Arcane Signet")
+        sld_img = Image.open(sld_data.cached_png_path).convert("RGB")
+        sld_renamed = apply_card_rename(sld_img, "Arcane Signet", "Power Morpher", mana_cost=sld_data.mana_cost)
+        sld_title_crop = sld_renamed.crop((int(58 * sld_img.width / 745.0), int(60 * sld_img.height / 1040.0), int(200 * sld_img.width / 745.0), int(95 * sld_img.height / 1040.0)))
+        sld_max_lum = max(sum(sld_title_crop.getpixel((x, y))[:3]) / 3.0 for x in range(sld_title_crop.width) for y in range(sld_title_crop.height))
+        self.assertGreater(sld_max_lum, 240.0) # Bright white text stroke present
+
 
 if __name__ == "__main__":
     unittest.main()

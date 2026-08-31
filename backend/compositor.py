@@ -936,20 +936,34 @@ def composite_card(
     )
 
 
+FONTS_DIR = Path(__file__).resolve().parent / "fonts"
+
+
 def get_card_font(size: int, bold: bool = True, italic: bool = False) -> ImageFont.ImageFont:
     """
-    Attempts to load a suitable typography font matching MTG styling:
-    checks bold, italic, bold-italic, and regular system font variants.
+    Attempts to load the authentic Magic: The Gathering card name font (Beleren Bold / Beleren SmallCaps)
+    from bundled project fonts, falling back to local system fonts if unavailable.
     """
+    font_candidates = []
+
     if bold and italic:
         font_candidates = [
+            str(FONTS_DIR / "BelerenSmallCaps-BoldItalic.ttf"),
+            str(FONTS_DIR / "Beleren-Bold.ttf"),
+            "BelerenSmallCaps-BoldItalic.ttf",
+            "Beleren-Bold.ttf",
             "arialbi.ttf", "calibriz.ttf", "georgiaz.ttf", "cambriaz.ttf", "timesbi.ttf", "segoeuiz.ttf",
             "C:/Windows/Fonts/arialbi.ttf", "C:/Windows/Fonts/calibriz.ttf", "C:/Windows/Fonts/georgiaz.ttf",
             "/Library/Fonts/Arial Bold Italic.ttf", "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf",
         ]
     elif bold:
         font_candidates = [
-            "beleren.ttf", "Beleren-Bold.ttf", "arialbd.ttf", "Arial-Bold.ttf", "Arial_Bold.ttf", "Arial Bold.ttf",
+            str(FONTS_DIR / "Beleren-Bold.ttf"),
+            str(FONTS_DIR / "BelerenSmallCaps-Bold.ttf"),
+            "Beleren-Bold.ttf",
+            "Beleren2016-Bold.ttf",
+            "beleren.ttf",
+            "arialbd.ttf", "Arial-Bold.ttf", "Arial_Bold.ttf", "Arial Bold.ttf",
             "calibrib.ttf", "georgiab.ttf", "cambriab.ttf", "timesbd.ttf", "segoeuib.ttf",
             "C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/calibrib.ttf", "C:/Windows/Fonts/georgiab.ttf",
             "/usr/share/fonts/truetype/msttcorefonts/arialbd.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -957,7 +971,11 @@ def get_card_font(size: int, bold: bool = True, italic: bool = False) -> ImageFo
         ]
     elif italic:
         font_candidates = [
-            "beleren-italic.ttf", "ariali.ttf", "Arial-Italic.ttf", "Arial_Italic.ttf", "Arial Italic.ttf",
+            str(FONTS_DIR / "BelerenSmallCaps-BoldItalic.ttf"),
+            str(FONTS_DIR / "Beleren-Bold.ttf"),
+            "BelerenSmallCaps-BoldItalic.ttf",
+            "beleren-italic.ttf",
+            "ariali.ttf", "Arial-Italic.ttf", "Arial_Italic.ttf", "Arial Italic.ttf",
             "calibrii.ttf", "georgiai.ttf", "cambriai.ttf", "timesi.ttf", "segoeuii.ttf",
             "C:/Windows/Fonts/ariali.ttf", "C:/Windows/Fonts/calibrii.ttf", "C:/Windows/Fonts/georgiai.ttf",
             "/usr/share/fonts/truetype/msttcorefonts/ariali.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
@@ -965,7 +983,11 @@ def get_card_font(size: int, bold: bool = True, italic: bool = False) -> ImageFo
         ]
     else:
         font_candidates = [
-            "beleren.ttf", "arial.ttf", "Arial.ttf", "calibri.ttf", "georgia.ttf", "cambria.ttf", "times.ttf", "segoeui.ttf",
+            str(FONTS_DIR / "Beleren-Bold.ttf"),
+            str(FONTS_DIR / "BelerenSmallCaps-Bold.ttf"),
+            "Beleren-Bold.ttf",
+            "beleren.ttf",
+            "arial.ttf", "Arial.ttf", "calibri.ttf", "georgia.ttf", "cambria.ttf", "times.ttf", "segoeui.ttf",
             "C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/calibri.ttf", "C:/Windows/Fonts/georgia.ttf",
             "/usr/share/fonts/truetype/msttcorefonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/Library/Fonts/Arial.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -1062,11 +1084,39 @@ def apply_card_rename(
     card_copy = card_img.copy().convert("RGBA")
     card_copy.paste(infill_img, (0, 0), feathered_mask)
 
-    # Sample background brightness in title area to decide dark vs light text
-    sample_pixels = [card_copy.getpixel((x, int(80 * sy))) for x in range(text_x1, min(text_x2, text_x1 + 100), 10)]
-    avg_bright = (sum(sum(p[:3]) / 3.0 for p in sample_pixels) / len(sample_pixels)) if sample_pixels else 150.0
-    title_color = (18, 20, 24, 255) if avg_bright > 110 else (245, 245, 248, 255)
-    shadow_color = (255, 255, 255, 140) if avg_bright > 110 else (0, 0, 0, 180)
+    # Sample background margins and text area from original card to match replaced font color (black or white)
+    sample_crop = card_img.crop((int(58 * sx), int(60 * sy), min(int(350 * sx), cw), int(100 * sy)))
+    crop_lums = sorted([sum(sample_crop.getpixel((x, y))[:3]) / 3.0 for x in range(sample_crop.width) for y in range(sample_crop.height)])
+    k = max(20, min(200, len(crop_lums) // 10))
+    dark_sample = sum(crop_lums[:k]) / k if crop_lums else 150.0
+    bright_sample = sum(crop_lums[-k:]) / k if crop_lums else 150.0
+    median_sample = crop_lums[len(crop_lums) // 2] if crop_lums else 150.0
+
+    margin_samples = []
+    for x in range(int(58 * sx), min(int(350 * sx), cw), 4):
+        for y in list(range(int(53 * sy), int(57 * sy))) + list(range(int(103 * sy), int(107 * sy))):
+            margin_samples.append(card_img.getpixel((x, y)))
+    avg_margin_lum = (sum(sum(p[:3]) / 3.0 for p in margin_samples) / len(margin_samples)) if margin_samples else 150.0
+
+    # Determine exact font color (black or white) matching the replaced title box:
+    # - Dark translucent glass banner with bright white text glyphs and no dark strokes (e.g. SLD 2816, SLD 2695) -> WHITE
+    # - Solid dark/black frame (e.g. Murder MOM 115, Animate Dead SLD 2189) with bright text glyphs -> WHITE
+    # - Standard light/colored frames with distinct dark text strokes (e.g. Serra Angel, Llanowar Elves, Byode) -> BLACK
+    if dark_sample > 60.0 and bright_sample > 215.0:
+        is_white_font = True
+    elif avg_margin_lum < 85.0 and bright_sample > 180.0:
+        is_white_font = True
+    elif dark_sample <= 45.0 and avg_margin_lum > 85.0:
+        is_white_font = False
+    else:
+        is_white_font = (median_sample < 125.0)
+
+    if is_white_font:
+        title_color = (255, 255, 255, 255)
+        shadow_color = (0, 0, 0, 220)
+    else:
+        title_color = (18, 20, 24, 255)
+        shadow_color = (255, 255, 255, 110)
 
     # 2. Render new card name in the title plate
     avail_w = text_x2 - text_x1 - int(10 * sx)
