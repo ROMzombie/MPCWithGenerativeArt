@@ -549,7 +549,8 @@ class PerchanceImageGenerator(BaseImageGenerator):
                     target_height,
                 )
         except Exception as e:
-            print(f"[Perchance Generator] Failed to generate art ({e}). Using procedural fallback.")
+            err_msg = str(e).encode("ascii", "replace").decode("ascii")
+            print(f"[Perchance Generator] Failed to generate art ({err_msg}). Using procedural fallback.")
             return await MockProceduralGenerator().generate_art(
                 prompt=prompt,
                 card_name=card_name,
